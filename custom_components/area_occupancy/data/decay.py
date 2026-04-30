@@ -42,6 +42,7 @@ class Decay:
             self.decay_start = dt_util.utcnow()
 
         self._base_half_life = half_life
+        self._override_half_life: float | None = None
         self.is_decaying = is_decaying
         self._purpose = Purpose(purpose) if purpose is not None else None
         self.sleep_start = sleep_start
@@ -55,6 +56,8 @@ class Decay:
     @property
     def half_life(self) -> float:
         """Return the effective half-life based on purpose and time of day."""
+        if self._override_half_life is not None:
+            return self._override_half_life
         # If no purpose or purpose has no awake_half_life, use base half-life
         if self._purpose is None or self._purpose.awake_half_life is None:
             return self._base_half_life
@@ -141,16 +144,26 @@ class Decay:
         # Stop decay if factor has reached practical zero or half_life is invalid
         if self.is_decaying and factor <= 0.0:
             self.is_decaying = False
+            self._override_half_life = None
 
         return factor
 
-    def start_decay(self) -> None:
-        """Begin decay **only if not already running**."""
+    def start_decay(self, *, override_half_life: float | None = None) -> None:
+        """Begin decay **only if not already running**.
+
+        Args:
+            override_half_life: Optional half-life override (seconds) used for this
+                decay run only. Cleared when decay stops.
+        """
         if not self.is_decaying:
             self.is_decaying = True
             self.decay_start = dt_util.utcnow()
+            self._override_half_life = (
+                float(override_half_life) if override_half_life is not None else None
+            )
 
     def stop_decay(self) -> None:
         """Stop decay **only if already running**."""
         if self.is_decaying:
             self.is_decaying = False
+        self._override_half_life = None

@@ -1283,6 +1283,28 @@ class TestAreaOccupancyCoordinator:
             assert handle3 is not handle1, (
                 "Different areas should have different handles"
             )
+
+    def test_transition_boost_adds_transient_prior_delta(
+        self, coordinator: AreaOccupancyCoordinator
+    ) -> None:
+        """Motion transition boost adds transient prior delta to adjacent areas."""
+        area_names = coordinator.get_area_names()
+        assert len(area_names) >= 2
+        source = coordinator.get_area(area_names[0])
+        target = coordinator.get_area(area_names[1])
+        assert source is not None and target is not None
+
+        # Configure adjacency via stable area_id
+        source.config.adjacent_area_ids = [target.config.area_id]
+        source.config.transition_boost_enabled = True
+        source.config.transition_boost_logit = 0.6
+        source.config.transition_boost_window = 60
+
+        coordinator._apply_transition_boost(source)  # noqa: SLF001
+        delta = coordinator.get_transient_prior_logit_delta(target.area_name)
+        assert delta == pytest.approx(0.6)
+        sources = coordinator.get_transient_prior_sources(target.area_name)
+        assert any(s["source_area"] == source.area_name for s in sources)
             assert handle3 is not None
 
     def test_get_all_areas_lazy_initialization(

@@ -21,6 +21,7 @@ from .const import ALL_AREAS_IDENTIFIER
 from .data.activity import ActivityId
 from .data.entity_type import InputType
 from .utils import format_float, format_percentage, generate_entity_unique_id
+from .utils import sigmoid_contributions
 
 if TYPE_CHECKING:
     from .area import Area
@@ -215,12 +216,22 @@ class ProbabilitySensor(AreaOccupancySensorBase):
                 {"entity_id": e.entity_id, "decay_factor": e.decay.decay_factor}
                 for e in area.entities.decaying_entities
             ]
+            correlations = area._get_entity_correlations()  # noqa: SLF001
+            contrib = sigmoid_contributions(
+                area.entities.entities,
+                prior=area.area_prior(),
+                correlations=correlations,
+            )
         except (AttributeError, KeyError, TypeError):
             return {}
         return {
             **snapshot,
             "active_entities": active_entities,
             "decaying_entities": decaying_entities,
+            "transition_boosts": area.coordinator.get_transient_prior_sources(
+                area.area_name
+            ),
+            "top_contributors": contrib[:8],
         }
 
     @callback

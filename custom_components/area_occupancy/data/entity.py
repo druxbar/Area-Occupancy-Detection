@@ -34,6 +34,7 @@ from .types import GaussianParams
 if TYPE_CHECKING:
     from ..coordinator import AreaOccupancyCoordinator
     from ..db import AreaOccupancyDB as DB
+    from .config import AreaConfig
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -73,6 +74,8 @@ class Entity:
     learned_gaussian_params: GaussianParams | None = None
     analysis_error: str | None = None
     correlation_type: str | None = None
+    area_config: "AreaConfig | None" = None
+    last_true_start: datetime | None = None
 
     def __post_init__(self) -> None:
         """Validate that either hass or state_provider is provided.
@@ -606,9 +609,26 @@ class Entity:
             self.last_updated = dt_util.utcnow()
             if current_evidence:  # FALSE→TRUE transition
                 self.decay.stop_decay()
+                self.last_true_start = self.last_updated
             else:  # TRUE→FALSE transition
                 # Evidence lost - start decay
-                self.decay.start_decay()
+                override_half_life: float | None = None
+                if (
+                    self.type.input_type == InputType.MOTION
+                    and self.area_config is not None
+                    and getattr(self.area_config, "quick_visit_decay_enabled", False)
+                    and self.last_true_start is not None
+                ):
+                    duration_s = (
+                        self.last_updated - to_utc(self.last_true_start)
+                    ).total_seconds()
+                    max_dur = float(getattr(self.area_config, "quick_visit_max_duration", 0))
+                    if duration_s <= max_dur:
+                        override_half_life = float(
+                            getattr(self.area_config, "quick_visit_decay_half_life", 0)
+                        )
+                self.decay.start_decay(override_half_life=override_half_life)
+                self.last_true_start = None
 
         # Update previous evidence for next comparison
         self.previous_evidence = current_evidence
@@ -813,6 +833,7 @@ class EntityFactory:
             last_updated=last_updated,
             previous_evidence=previous_evidence,
             analysis_error=analysis_error,
+            area_config=self.config,
         )
 
     def create_from_config_spec(self, entity_id: str, input_type: str) -> Entity:
@@ -928,6 +949,7 @@ class EntityFactory:
             last_updated=dt_util.utcnow(),
             previous_evidence=None,
             analysis_error=analysis_error,
+            area_config=self.config,
         )
 
     def create_all_from_config(self) -> dict[str, Entity]:

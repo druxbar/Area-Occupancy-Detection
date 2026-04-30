@@ -226,6 +226,15 @@ class TestDecay:
         else:
             assert decay.decay_start == original_start
 
+    def test_start_decay_override_half_life(self) -> None:
+        """start_decay stores override half-life for this decay run."""
+        decay = Decay(half_life=60.0, is_decaying=False)
+        decay.start_decay(override_half_life=10.0)
+        assert decay.is_decaying is True
+        assert decay.half_life == 10.0
+        decay.stop_decay()
+        assert decay.half_life == 60.0
+
     def test_timezone_naive_datetime_handling(self) -> None:
         """Test that timezone-naive datetimes are handled correctly."""
         # Create a timezone-naive datetime

@@ -199,6 +199,68 @@ def sigmoid_probability(
     return clamp_probability(sigmoid(z))
 
 
+def sigmoid_contributions(
+    entities: dict[str, Entity],
+    *,
+    prior: float = 0.5,
+    correlations: dict[str, float] | None = None,
+) -> list[dict[str, Any]]:
+    """Return per-entity contributions to the sigmoid logit sum.
+
+    Intended for explainability UX: shows which entities currently drive the
+    occupancy probability and by how much (logit-space).
+    """
+    rows: list[dict[str, Any]] = []
+    if not entities:
+        return rows
+
+    for entity_id, entity in entities.items():
+        if entity.weight <= 0:
+            continue
+
+        correlation = 1.0
+        if correlations and entity_id in correlations:
+            correlation = correlations[entity_id]
+
+        if entity.evidence is True:
+            evidence = 1.0
+            evidence_state = "active"
+        elif entity.decay.is_decaying:
+            evidence = entity.decay_factor
+            evidence_state = "decaying"
+        elif entity.evidence is False:
+            evidence = 0.0
+            evidence_state = "inactive"
+        else:
+            evidence = 0.0
+            evidence_state = "unavailable"
+
+        strength = entity.prob_given_true
+        strength_multiplier = getattr(entity.type, "strength_multiplier", 2.0)
+        ew = getattr(entity, "effective_weight", entity.weight)
+        contrib = ew * evidence * correlation * (strength * strength_multiplier)
+
+        rows.append(
+            {
+                "entity_id": entity_id,
+                "name": entity.name,
+                "input_type": str(getattr(entity.type, "input_type", "")) or None,
+                "evidence_state": evidence_state,
+                "evidence": entity.evidence,
+                "decay_factor": entity.decay_factor,
+                "weight": entity.weight,
+                "effective_weight": ew,
+                "correlation": correlation,
+                "strength": strength,
+                "strength_multiplier": strength_multiplier,
+                "logit_contribution": contrib,
+            }
+        )
+
+    rows.sort(key=lambda r: abs(float(r.get("logit_contribution", 0.0))), reverse=True)
+    return rows
+
+
 def presence_probability(
     entities: dict[str, Entity],
     prior: float = 0.5,

@@ -86,6 +86,15 @@ from .const import (
     CONF_PURPOSE,
     CONF_SLEEP_END,
     CONF_SLEEP_START,
+    CONF_ADJACENT_AREAS,
+    CONF_TRANSITION_BOOST_ENABLED,
+    CONF_TRANSITION_BOOST_LOGIT,
+    CONF_TRANSITION_BOOST_WINDOW,
+    CONF_QUICK_VISIT_DECAY_ENABLED,
+    CONF_QUICK_VISIT_DECAY_HALF_LIFE,
+    CONF_QUICK_VISIT_MAX_DURATION,
+    CONF_AUTO_WEIGHT_ALPHA,
+    CONF_AUTO_WEIGHT_ENABLED,
     CONF_SOUND_PRESSURE_SENSORS,
     CONF_TEMPERATURE_SENSORS,
     CONF_THRESHOLD,
@@ -121,6 +130,14 @@ from .const import (
     DEFAULT_SLEEP_CONFIDENCE_THRESHOLD,
     DEFAULT_SLEEP_END,
     DEFAULT_SLEEP_START,
+    DEFAULT_AUTO_WEIGHT_ALPHA,
+    DEFAULT_AUTO_WEIGHT_ENABLED,
+    DEFAULT_QUICK_VISIT_DECAY_ENABLED,
+    DEFAULT_QUICK_VISIT_DECAY_HALF_LIFE,
+    DEFAULT_QUICK_VISIT_MAX_DURATION,
+    DEFAULT_TRANSITION_BOOST_ENABLED,
+    DEFAULT_TRANSITION_BOOST_LOGIT,
+    DEFAULT_TRANSITION_BOOST_WINDOW,
     DEFAULT_THRESHOLD,
     DEFAULT_WASP_MAX_DURATION,
     DEFAULT_WASP_MOTION_TIMEOUT,
@@ -927,6 +944,83 @@ def _create_parameters_section_schema(
                 unit_of_measurement="probability",
             )
         )
+
+        # Adjacency / transition boost
+        fields[
+            vol.Optional(
+                CONF_ADJACENT_AREAS,
+                default=defaults.get(CONF_ADJACENT_AREAS, []),
+            )
+        ] = AreaSelector(AreaSelectorConfig(multiple=True))
+        fields[
+            vol.Optional(
+                CONF_TRANSITION_BOOST_ENABLED,
+                default=defaults.get(
+                    CONF_TRANSITION_BOOST_ENABLED,
+                    DEFAULT_TRANSITION_BOOST_ENABLED,
+                ),
+            )
+        ] = BooleanSelector()
+        fields[
+            vol.Optional(
+                CONF_TRANSITION_BOOST_LOGIT,
+                default=defaults.get(
+                    CONF_TRANSITION_BOOST_LOGIT,
+                    DEFAULT_TRANSITION_BOOST_LOGIT,
+                ),
+            )
+        ] = NumberSelector(
+            NumberSelectorConfig(
+                min=0.0,
+                max=3.0,
+                step=0.1,
+                mode=NumberSelectorMode.SLIDER,
+            )
+        )
+        fields[
+            vol.Optional(
+                CONF_TRANSITION_BOOST_WINDOW,
+                default=_seconds_to_duration(
+                    defaults.get(
+                        CONF_TRANSITION_BOOST_WINDOW,
+                        DEFAULT_TRANSITION_BOOST_WINDOW,
+                    )
+                ),
+            )
+        ] = DurationSelector(DurationSelectorConfig(enable_day=False))
+
+        # Quick-visit decay (motion-only)
+        fields[
+            vol.Optional(
+                CONF_QUICK_VISIT_DECAY_ENABLED,
+                default=defaults.get(
+                    CONF_QUICK_VISIT_DECAY_ENABLED,
+                    DEFAULT_QUICK_VISIT_DECAY_ENABLED,
+                ),
+            )
+        ] = BooleanSelector()
+        fields[
+            vol.Optional(
+                CONF_QUICK_VISIT_MAX_DURATION,
+                default=_seconds_to_duration(
+                    defaults.get(
+                        CONF_QUICK_VISIT_MAX_DURATION,
+                        DEFAULT_QUICK_VISIT_MAX_DURATION,
+                    )
+                ),
+            )
+        ] = DurationSelector(DurationSelectorConfig(enable_day=False))
+        fields[
+            vol.Optional(
+                CONF_QUICK_VISIT_DECAY_HALF_LIFE,
+                default=_seconds_to_duration(
+                    defaults.get(
+                        CONF_QUICK_VISIT_DECAY_HALF_LIFE,
+                        DEFAULT_QUICK_VISIT_DECAY_HALF_LIFE,
+                    )
+                ),
+            )
+        ] = DurationSelector(DurationSelectorConfig(enable_day=False))
 
     return vol.Schema(fields)
 
@@ -1824,6 +1918,21 @@ def _create_global_settings_schema(defaults: dict[str, Any]) -> vol.Schema:
                 CONF_SLEEP_END,
                 default=defaults.get(CONF_SLEEP_END, DEFAULT_SLEEP_END),
             ): TimeSelector(),
+            vol.Optional(
+                CONF_AUTO_WEIGHT_ENABLED,
+                default=defaults.get(CONF_AUTO_WEIGHT_ENABLED, DEFAULT_AUTO_WEIGHT_ENABLED),
+            ): BooleanSelector(),
+            vol.Optional(
+                CONF_AUTO_WEIGHT_ALPHA,
+                default=defaults.get(CONF_AUTO_WEIGHT_ALPHA, DEFAULT_AUTO_WEIGHT_ALPHA),
+            ): NumberSelector(
+                NumberSelectorConfig(
+                    min=0.0,
+                    max=1.0,
+                    step=0.05,
+                    mode=NumberSelectorMode.SLIDER,
+                )
+            ),
         }
     )
 
@@ -2765,6 +2874,12 @@ class AreaOccupancyOptionsFlow(OptionsFlow, BaseOccupancyFlow):
             ),
             CONF_SLEEP_END: self.config_entry.options.get(
                 CONF_SLEEP_END, DEFAULT_SLEEP_END
+            ),
+            CONF_AUTO_WEIGHT_ENABLED: self.config_entry.options.get(
+                CONF_AUTO_WEIGHT_ENABLED, DEFAULT_AUTO_WEIGHT_ENABLED
+            ),
+            CONF_AUTO_WEIGHT_ALPHA: self.config_entry.options.get(
+                CONF_AUTO_WEIGHT_ALPHA, DEFAULT_AUTO_WEIGHT_ALPHA
             ),
         }
 

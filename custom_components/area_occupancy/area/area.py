@@ -26,7 +26,9 @@ from ..utils import (
     apply_activity_boost,
     combined_probability as calc_combined,
     environmental_confidence as calc_env,
+    logit,
     presence_probability as calc_presence,
+    sigmoid,
 )
 
 if TYPE_CHECKING:
@@ -274,9 +276,11 @@ class Area:
 
         correlations = self._get_entity_correlations()
 
-        return calc_presence(
-            entities, prior=self.prior.value, correlations=correlations
-        )
+        prior = self.prior.value
+        delta = self.coordinator.get_transient_prior_logit_delta(self.area_name)
+        if delta:
+            prior = sigmoid(logit(prior) + delta)
+        return calc_presence(entities, prior=prior, correlations=correlations)
 
     def environmental_confidence(self) -> float:
         """Calculate environmental support confidence.
@@ -314,7 +318,11 @@ class Area:
         Returns:
             Prior probability (0.0-1.0)
         """
-        return self.prior.value
+        prior = self.prior.value
+        delta = self.coordinator.get_transient_prior_logit_delta(self.area_name)
+        if delta:
+            prior = sigmoid(logit(prior) + delta)
+        return prior
 
     def decay(self) -> float:
         """Calculate the current decay probability (0.0-1.0) for this area.

@@ -76,6 +76,8 @@ def create_test_entity(
         last_updated=dt_util.utcnow(),
         previous_evidence=kwargs.get("previous_evidence"),
         analysis_error=kwargs.get("analysis_error"),
+        area_config=kwargs.get("area_config"),
+        last_true_start=kwargs.get("last_true_start"),
     )
 
 
@@ -590,6 +592,46 @@ class TestEntityPropertiesAndMethods:
             mock_state.state = "off"
             # decay_factor should be < 1.0 since decay is running and started 1 minute ago
             assert entity.decay_factor < 1.0
+        finally:
+            object.__setattr__(coordinator.hass, "states", original_states)
+
+    def test_quick_visit_decay_override_applied(
+        self, coordinator: AreaOccupancyCoordinator
+    ) -> None:
+        """Short motion burst triggers override half-life when enabled."""
+        cfg = Mock()
+        cfg.quick_visit_decay_enabled = True
+        cfg.quick_visit_max_duration = 10
+        cfg.quick_visit_decay_half_life = 5
+
+        entity_type = EntityType(
+            input_type=InputType.MOTION,
+            weight=1.0,
+            prob_given_true=0.95,
+            prob_given_false=0.005,
+            active_states=[STATE_ON],
+        )
+        decay = Decay(half_life=60.0)
+        entity = create_test_entity(
+            entity_type=entity_type,
+            decay=decay,
+            coordinator=coordinator,
+            previous_evidence=False,
+            area_config=cfg,
+        )
+
+        original_states = coordinator.hass.states
+        mock_state = Mock()
+        _set_states_get(coordinator.hass, lambda _: mock_state)
+        try:
+            # Motion ON
+            mock_state.state = STATE_ON
+            assert entity.has_new_evidence() is True
+            # Motion OFF quickly
+            mock_state.state = STATE_OFF
+            assert entity.has_new_evidence() is True
+            assert entity.decay.is_decaying is True
+            assert entity.decay.half_life == 5.0
         finally:
             object.__setattr__(coordinator.hass, "states", original_states)
 

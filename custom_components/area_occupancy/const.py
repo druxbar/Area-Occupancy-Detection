@@ -91,6 +91,21 @@ CONF_EXCLUDE_FROM_ALL_AREAS: Final = "exclude_from_all_areas"
 CONF_SLEEP_START: Final = "sleep_start"
 CONF_SLEEP_END: Final = "sleep_end"
 
+# Adjacency / transitions (per-area)
+CONF_ADJACENT_AREAS: Final = "adjacent_areas"
+CONF_TRANSITION_BOOST_ENABLED: Final = "transition_boost_enabled"
+CONF_TRANSITION_BOOST_LOGIT: Final = "transition_boost_logit"
+CONF_TRANSITION_BOOST_WINDOW: Final = "transition_boost_window"
+
+# Quick-visit decay (per-area)
+CONF_QUICK_VISIT_DECAY_ENABLED: Final = "quick_visit_decay_enabled"
+CONF_QUICK_VISIT_MAX_DURATION: Final = "quick_visit_max_duration"
+CONF_QUICK_VISIT_DECAY_HALF_LIFE: Final = "quick_visit_decay_half_life"
+
+# Auto-weight calibration (global)
+CONF_AUTO_WEIGHT_ENABLED: Final = "auto_weight_enabled"
+CONF_AUTO_WEIGHT_ALPHA: Final = "auto_weight_alpha"
+
 # People configuration constants
 CONF_PEOPLE: Final = "people"
 CONF_PERSON_ENTITY: Final = "person_entity"
@@ -139,6 +154,26 @@ DEFAULT_SLEEP_WEIGHT: Final = 0.9
 SLEEP_PRESENCE_HALF_LIFE: Final = (
     7200  # 2 hour half-life for sleep (persistent presence)
 )
+
+# Adjacency / transitions defaults
+DEFAULT_TRANSITION_BOOST_ENABLED: Final = False
+# Logit-space delta applied to adjacent areas on motion transition.
+# 0.0 = disabled; ~0.4 ≈ +10% absolute near p=0.5
+DEFAULT_TRANSITION_BOOST_LOGIT: Final[float] = 0.4
+# Seconds boost remains active after transition
+DEFAULT_TRANSITION_BOOST_WINDOW: Final = 60
+
+# Quick-visit decay defaults
+DEFAULT_QUICK_VISIT_DECAY_ENABLED: Final = False
+# If motion evidence was active for <= this duration, treat as "quick visit"
+DEFAULT_QUICK_VISIT_MAX_DURATION: Final = 10
+# Override half-life (seconds) used for that decay run only
+DEFAULT_QUICK_VISIT_DECAY_HALF_LIFE: Final = 15
+
+# Auto-weight calibration defaults
+DEFAULT_AUTO_WEIGHT_ENABLED: Final = False
+# EMA blend factor for weight updates per analysis run: new = old*(1-a)+target*a
+DEFAULT_AUTO_WEIGHT_ALPHA: Final[float] = 0.2
 
 # Database recovery defaults
 DEFAULT_ENABLE_AUTO_RECOVERY: Final = True
@@ -516,4 +551,7 @@ DURATION_FIELDS: Final[set[str]] = {
     CONF_WASP_MAX_DURATION,
     CONF_WASP_MOTION_TIMEOUT,
     CONF_WASP_VERIFICATION_DELAY,
+    CONF_TRANSITION_BOOST_WINDOW,
+    CONF_QUICK_VISIT_MAX_DURATION,
+    CONF_QUICK_VISIT_DECAY_HALF_LIFE,
 }

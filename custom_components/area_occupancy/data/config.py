@@ -51,6 +51,15 @@ from ..const import (
     CONF_PURPOSE,
     CONF_SLEEP_END,
     CONF_SLEEP_START,
+    CONF_ADJACENT_AREAS,
+    CONF_TRANSITION_BOOST_ENABLED,
+    CONF_TRANSITION_BOOST_LOGIT,
+    CONF_TRANSITION_BOOST_WINDOW,
+    CONF_QUICK_VISIT_DECAY_ENABLED,
+    CONF_QUICK_VISIT_DECAY_HALF_LIFE,
+    CONF_QUICK_VISIT_MAX_DURATION,
+    CONF_AUTO_WEIGHT_ALPHA,
+    CONF_AUTO_WEIGHT_ENABLED,
     CONF_SOUND_PRESSURE_SENSORS,
     CONF_TEMPERATURE_SENSORS,
     CONF_THRESHOLD,
@@ -87,6 +96,14 @@ from ..const import (
     DEFAULT_SLEEP_END,
     DEFAULT_SLEEP_START,
     DEFAULT_THRESHOLD,
+    DEFAULT_AUTO_WEIGHT_ALPHA,
+    DEFAULT_AUTO_WEIGHT_ENABLED,
+    DEFAULT_QUICK_VISIT_DECAY_ENABLED,
+    DEFAULT_QUICK_VISIT_DECAY_HALF_LIFE,
+    DEFAULT_QUICK_VISIT_MAX_DURATION,
+    DEFAULT_TRANSITION_BOOST_ENABLED,
+    DEFAULT_TRANSITION_BOOST_LOGIT,
+    DEFAULT_TRANSITION_BOOST_WINDOW,
     DEFAULT_WASP_MAX_DURATION,
     DEFAULT_WASP_MOTION_TIMEOUT,
     DEFAULT_WASP_VERIFICATION_DELAY,
@@ -233,6 +250,24 @@ class IntegrationConfig:
                 )
             )
         return result
+
+    @property
+    def auto_weight_enabled(self) -> bool:
+        """Enable auto-weight calibration during analysis runs."""
+        return bool(
+            self.config_entry.options.get(CONF_AUTO_WEIGHT_ENABLED, DEFAULT_AUTO_WEIGHT_ENABLED)
+        )
+
+    @property
+    def auto_weight_alpha(self) -> float:
+        """EMA blend factor for auto-weight updates (0-1)."""
+        try:
+            alpha = float(
+                self.config_entry.options.get(CONF_AUTO_WEIGHT_ALPHA, DEFAULT_AUTO_WEIGHT_ALPHA)
+            )
+        except (TypeError, ValueError):
+            return DEFAULT_AUTO_WEIGHT_ALPHA
+        return max(0.0, min(1.0, alpha))
 
     def get_people_for_area(self, area_id: str) -> list[PersonConfig]:
         """Get people configured for a specific area."""
@@ -562,6 +597,70 @@ class AreaConfig:
         self.exclude_from_all_areas = bool(
             data.get(CONF_EXCLUDE_FROM_ALL_AREAS, DEFAULT_EXCLUDE_FROM_ALL_AREAS)
         )
+
+        # Adjacency / transition boost (stored as stable area_ids)
+        adjacent_area_ids = data.get(CONF_ADJACENT_AREAS, [])
+        if isinstance(adjacent_area_ids, str):
+            adjacent_area_ids = [adjacent_area_ids]
+        if not isinstance(adjacent_area_ids, list):
+            adjacent_area_ids = []
+        self.adjacent_area_ids: list[str] = [
+            a for a in adjacent_area_ids if isinstance(a, str) and a.strip()
+        ]
+
+        self.transition_boost_enabled = bool(
+            data.get(CONF_TRANSITION_BOOST_ENABLED, DEFAULT_TRANSITION_BOOST_ENABLED)
+        )
+        try:
+            self.transition_boost_logit = float(
+                data.get(CONF_TRANSITION_BOOST_LOGIT, DEFAULT_TRANSITION_BOOST_LOGIT)
+            )
+        except (TypeError, ValueError):
+            self.transition_boost_logit = DEFAULT_TRANSITION_BOOST_LOGIT
+        self.transition_boost_logit = max(0.0, min(3.0, self.transition_boost_logit))
+
+        try:
+            self.transition_boost_window = int(
+                data.get(CONF_TRANSITION_BOOST_WINDOW, DEFAULT_TRANSITION_BOOST_WINDOW)
+            )
+        except (TypeError, ValueError):
+            self.transition_boost_window = DEFAULT_TRANSITION_BOOST_WINDOW
+        self.transition_boost_window = max(1, min(3600, self.transition_boost_window))
+
+        # Quick-visit decay settings (per-area; motion-only)
+        self.quick_visit_decay_enabled = bool(
+            data.get(CONF_QUICK_VISIT_DECAY_ENABLED, DEFAULT_QUICK_VISIT_DECAY_ENABLED)
+        )
+        try:
+            self.quick_visit_max_duration = int(
+                data.get(CONF_QUICK_VISIT_MAX_DURATION, DEFAULT_QUICK_VISIT_MAX_DURATION)
+            )
+        except (TypeError, ValueError):
+            self.quick_visit_max_duration = DEFAULT_QUICK_VISIT_MAX_DURATION
+        self.quick_visit_max_duration = max(1, min(120, self.quick_visit_max_duration))
+
+        try:
+            self.quick_visit_decay_half_life = int(
+                data.get(
+                    CONF_QUICK_VISIT_DECAY_HALF_LIFE,
+                    DEFAULT_QUICK_VISIT_DECAY_HALF_LIFE,
+                )
+            )
+        except (TypeError, ValueError):
+            self.quick_visit_decay_half_life = DEFAULT_QUICK_VISIT_DECAY_HALF_LIFE
+        self.quick_visit_decay_half_life = max(1, min(600, self.quick_visit_decay_half_life))
+
+    def adjacent_area_names(self) -> list[str]:
+        """Resolve adjacent area_ids to current HA area names."""
+        if not self.adjacent_area_ids:
+            return []
+        area_reg = ar.async_get(self.hass)
+        names: list[str] = []
+        for area_id in self.adjacent_area_ids:
+            area_entry = area_reg.async_get_area(area_id)
+            if area_entry is not None:
+                names.append(area_entry.name)
+        return names
 
     @property
     def start_time(self) -> datetime:

@@ -75,6 +75,9 @@ class AreaOccupancyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._setup_complete: bool = False
         self._analysis_running: bool = False
         self._cached_correlations: dict[str, dict[str, float]] = {}
+        # Transient prior boosts applied by adjacency/transition model.
+        # area_name -> list of (expires_at_utc, logit_delta, source_area_name)
+        self._transient_prior_boosts: dict[str, list[tuple[datetime, float, str]]] = {}
         # Most recent full-analysis duration in milliseconds, written by
         # data.analysis.run_full_analysis at the end of each pipeline run.
         # Read by HealthMonitor.check_pipeline_health to flag slow analysis.
@@ -144,6 +147,37 @@ class AreaOccupancyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             Dict of entity_id -> correlation strength. Empty dict if no data.
         """
         return self._cached_correlations.get(area_name, {})
+
+    def _prune_transient_boosts(self, *, now: datetime | None = None) -> None:
+        """Drop expired transient boosts."""
+        now = now or dt_util.utcnow()
+        for area_name, boosts in list(self._transient_prior_boosts.items()):
+            alive = [b for b in boosts if b[0] > now]
+            if alive:
+                self._transient_prior_boosts[area_name] = alive
+            else:
+                self._transient_prior_boosts.pop(area_name, None)
+
+    def get_transient_prior_logit_delta(self, area_name: str) -> float:
+        """Return active transient prior logit delta for an area."""
+        self._prune_transient_boosts()
+        boosts = self._transient_prior_boosts.get(area_name, [])
+        return sum(delta for _, delta, _ in boosts)
+
+    def get_transient_prior_sources(self, area_name: str) -> list[dict[str, Any]]:
+        """Return active transient boosts with metadata for diagnostics."""
+        self._prune_transient_boosts()
+        now = dt_util.utcnow()
+        result: list[dict[str, Any]] = []
+        for expires_at, delta, source in self._transient_prior_boosts.get(area_name, []):
+            result.append(
+                {
+                    "source_area": source,
+                    "logit_delta": delta,
+                    "remaining_s": max(0.0, (expires_at - now).total_seconds()),
+                }
+            )
+        return result
 
     def _load_areas_from_config(
         self, target_dict: dict[str, Area] | None = None
@@ -955,7 +989,19 @@ class AreaOccupancyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     except ValueError:
                         # Entity doesn't belong to this area, skip it
                         continue
-                    if entity.has_new_evidence():
+                    prev_evidence = entity.previous_evidence
+                    transitioned = entity.has_new_evidence()
+                    # Transition model: on motion activation, boost adjacent areas briefly.
+                    if (
+                        transitioned
+                        and entity.type.input_type.value == "motion"
+                        and entity.evidence is True
+                        and prev_evidence in (False, None)
+                        and area.config.transition_boost_enabled
+                        and area.config.adjacent_area_ids
+                    ):
+                        self._apply_transition_boost(area)
+                    if transitioned:
                         affected_areas.append(area_name)
 
                 # If entity affects any area and setup is complete, refresh
@@ -968,6 +1014,25 @@ class AreaOccupancyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
             # Store listener (using a single key since we have one listener for all)
             self._area_state_listeners["_all"] = listener
+
+    def _apply_transition_boost(self, source_area: Area) -> None:
+        """Apply transient prior boosts to adjacent areas."""
+        try:
+            delta = float(source_area.config.transition_boost_logit)
+            window_s = int(source_area.config.transition_boost_window)
+        except (TypeError, ValueError, AttributeError):
+            return
+        if delta <= 0 or window_s <= 0:
+            return
+        expires_at = dt_util.utcnow() + timedelta(seconds=window_s)
+        for target_name in source_area.config.adjacent_area_names():
+            if target_name == source_area.area_name:
+                continue
+            if target_name not in self.areas:
+                continue
+            self._transient_prior_boosts.setdefault(target_name, []).append(
+                (expires_at, delta, source_area.area_name)
+            )
 
     # --- Save Timer Handling ---
     def _start_save_timer(self) -> None:

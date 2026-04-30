@@ -12,6 +12,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.util import dt as dt_util
 
 from ..const import DEFAULT_LOOKBACK_DAYS, TIME_PRIOR_MAX_BOUND, TIME_PRIOR_MIN_BOUND
+from ..const import MAX_WEIGHT, MIN_WEIGHT
 from ..db.correlation import (
     CORRELATION_FAILURE_ERRORS,
     get_correlatable_entities_by_area,
@@ -62,7 +63,7 @@ async def run_full_analysis(
 
     analysis_start_time = time.perf_counter()
     failed_steps: list[str] = []
-    total_steps = 12
+    total_steps = 13
 
     async def _run_step(step_num: int, step_name: str, coro: Awaitable[None]) -> None:
         """Run a single analysis step with timing and error tracking."""
@@ -124,6 +125,35 @@ async def run_full_analysis(
         await run_correlation_analysis(coordinator)
         await coordinator.async_refresh_correlations()
 
+    async def _auto_weight_calibration() -> None:
+        if not coordinator.integration_config.auto_weight_enabled:
+            return
+        alpha = coordinator.integration_config.auto_weight_alpha
+        for area in coordinator.areas.values():
+            # Skip areas without entities (shouldn't happen)
+            if not area.entities.entities:
+                continue
+            correlations = coordinator.get_cached_correlations(area.area_name)
+            for entity in area.entities.entities.values():
+                if entity.entity_id in (area.wasp_entity_id, area.sleep_entity_id):
+                    continue
+                if entity.type.input_type in (InputType.MOTION, InputType.SLEEP):
+                    continue
+                try:
+                    old_w = float(entity.type.weight)
+                except (TypeError, ValueError):
+                    continue
+                corr = float(correlations.get(entity.entity_id, 1.0))
+                corr = max(0.0, min(1.0, corr))
+                ig = float(getattr(entity, "information_gain", 0.0))
+                ig = max(0.0, min(1.0, ig))
+                # Target multiplier: keep baseline, reduce when uninformative/uncorrelated.
+                # Range: [0.3 .. 1.0] baseline scaling.
+                mult = (0.3 + 0.7 * ig) * (0.5 + 0.5 * corr)
+                target = max(MIN_WEIGHT, min(MAX_WEIGHT, old_w * mult))
+                new_w = (old_w * (1.0 - alpha)) + (target * alpha)
+                entity.type.weight = max(MIN_WEIGHT, min(MAX_WEIGHT, new_w))
+
     async def _pipeline_health_check() -> None:
         await _run_pipeline_health_check(coordinator)
 
@@ -150,10 +180,11 @@ async def run_full_analysis(
         )
         await _run_step(7, "recalculate_priors", _recalculate_priors())
         await _run_step(8, "correlation_analysis", _run_correlations())
-        await _run_step(9, "pipeline_health_check", _pipeline_health_check())
-        await _run_step(10, "save_data_before_refresh", _save_data())
-        await _run_step(11, "refresh_coordinator", _refresh())
-        await _run_step(12, "save_data_after_refresh", _save_data())
+        await _run_step(9, "auto_weight_calibration", _auto_weight_calibration())
+        await _run_step(10, "pipeline_health_check", _pipeline_health_check())
+        await _run_step(11, "save_data_before_refresh", _save_data())
+        await _run_step(12, "refresh_coordinator", _refresh())
+        await _run_step(13, "save_data_after_refresh", _save_data())
 
     except Exception as err:
         _LOGGER.error("Fatal error during analysis pipeline: %s", err)
