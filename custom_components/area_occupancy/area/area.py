@@ -134,6 +134,12 @@ class Area:
         self._activity_cache: DetectedActivity | None = None
         self._activity_cache_key: tuple[frozenset[str], float] | None = None
 
+        # Transition diagnostics (populated by coordinator)
+        self.last_transition_at: datetime | None = None
+        self.last_transition_from: bool | None = None
+        self.last_transition_to: bool | None = None
+        self.last_transition_reason: str | None = None
+
     @property
     def factory(self) -> EntityFactory:
         """Get or create the EntityFactory for this area."""

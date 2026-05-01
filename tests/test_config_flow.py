@@ -1321,6 +1321,19 @@ class TestConfigFlowIntegration:
             assert len(schema_dict) > 0
 
 
+def test_flatten_sectioned_input_merges_suggested_sensors() -> None:
+    """Suggest-only discovery fields should merge into real config keys."""
+    user_input = {
+        "power": {
+            "suggest_add_power_sensors": ["sensor.plug_power", "sensor.desk_power"],
+            CONF_POWER_SENSORS: ["sensor.plug_power"],
+        }
+    }
+    flattened = _flatten_sectioned_input(user_input)
+    assert "suggest_add_power_sensors" not in flattened
+    assert flattened[CONF_POWER_SENSORS] == ["sensor.plug_power", "sensor.desk_power"]
+
+
 class TestAreaOccupancyOptionsFlow:
     """Test AreaOccupancyOptionsFlow class."""
 

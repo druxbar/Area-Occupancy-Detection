@@ -28,10 +28,20 @@ from homeassistant.util import dt as dt_util
 
 # Local imports
 from .area import AllAreas, Area, AreaDeviceHandle, FloorAreas
-from .const import CONF_AREA_ID, CONF_AREAS, DEFAULT_NAME, DOMAIN, SAVE_INTERVAL
+from .const import (
+    CONF_ADAPTIVE_DECAY_MULTIPLIER,
+    CONF_AREA_ID,
+    CONF_AREAS,
+    DEFAULT_NAME,
+    DOMAIN,
+    SAVE_INTERVAL,
+)
 from .data.analysis import run_full_analysis
 from .data.config import IntegrationConfig
+from .data.entity_type import InputType
+from .data.transition_model import weights_for_adjacent_targets
 from .db import AreaOccupancyDB
+from .db import queries as db_queries
 from .utils import format_area_names
 
 _LOGGER = logging.getLogger(__name__)
@@ -75,6 +85,8 @@ class AreaOccupancyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._setup_complete: bool = False
         self._analysis_running: bool = False
         self._cached_correlations: dict[str, dict[str, float]] = {}
+        # Learned transition counts: from_area_name -> { to_area_name -> count }
+        self._transition_counts: dict[str, dict[str, float]] = {}
         # Transient prior boosts applied by adjacency/transition model.
         # area_name -> list of (expires_at_utc, logit_delta, source_area_name)
         self._transient_prior_boosts: dict[str, list[tuple[datetime, float, str]]] = {}
@@ -82,6 +94,11 @@ class AreaOccupancyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # data.analysis.run_full_analysis at the end of each pipeline run.
         # Read by HealthMonitor.check_pipeline_health to flag slow analysis.
         self._last_analysis_duration_ms: float | None = None
+
+        # Adaptive false-negative learning state (per-area)
+        self._last_occupied_state: dict[str, bool] = {}
+        self._last_unoccupied_at: dict[str, datetime] = {}
+        self._adaptive_dirty_areas: set[str] = set()
 
     async def async_init_database(self) -> None:
         """Initialize the database asynchronously to avoid blocking the event loop.
@@ -136,6 +153,21 @@ class AreaOccupancyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     exc_info=True,
                 )
                 self._cached_correlations[area_name] = {}
+
+    async def async_refresh_transition_counts(self) -> None:
+        """Load learned area-to-area transition counts from the database."""
+
+        def _load() -> dict[str, dict[str, float]]:
+            return db_queries.get_area_transition_counts_matrix(self.db, self.entry_id)
+
+        try:
+            self._transition_counts = await self.hass.async_add_executor_job(_load)
+        except (OSError, RuntimeError, TypeError, ValueError):
+            _LOGGER.debug(
+                "Failed to load transition counts; using empty matrix",
+                exc_info=True,
+            )
+            self._transition_counts = {}
 
     def get_cached_correlations(self, area_name: str) -> dict[str, float]:
         """Return cached correlation strengths for the given area.
@@ -413,6 +445,7 @@ class AreaOccupancyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
             # Load cached correlations for probability calculations
             await self.async_refresh_correlations()
+            await self.async_refresh_transition_counts()
 
             # Reconcile restored entity state with current HA reality.
             # Database may have stale decay/evidence from before the reload.
@@ -473,17 +506,131 @@ class AreaOccupancyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             Dictionary with area data keyed by area name
         """
         # Return current state data for all areas (all calculations are in-memory)
-        result = {}
+        now = dt_util.utcnow()
+        result: dict[str, Any] = {}
         for area_name, area in self.areas.items():
+            occupied_now = area.occupied()
+            prev = self._last_occupied_state.get(area_name)
+            if prev is None:
+                self._last_occupied_state[area_name] = occupied_now
+            elif prev != occupied_now:
+                self._last_occupied_state[area_name] = occupied_now
+                if not occupied_now:
+                    self._last_unoccupied_at[area_name] = now
+                area.last_transition_at = now
+                area.last_transition_from = prev
+                area.last_transition_to = occupied_now
+                area.last_transition_reason = (
+                    "occupied_to_unoccupied" if prev and not occupied_now else "unoccupied_to_occupied"
+                )
+
             result[area_name] = {
                 "probability": area.probability(),
-                "occupied": area.occupied(),
+                "occupied": occupied_now,
                 "threshold": area.threshold(),
                 "prior": area.area_prior(),
                 "decay": area.decay(),
-                "last_updated": dt_util.utcnow(),
+                "last_updated": now,
             }
         return result
+
+    async def track_entity_state_changes(self, entity_ids: list[str]) -> None:
+        """Listen for state changes across all configured entity_ids."""
+        if not self.hass:
+            return
+
+        # Unsubscribe previous listener (single global listener in multi-area arch)
+        prev = self._area_state_listeners.pop("_global", None)
+        if prev is not None:
+            prev()
+
+        @callback
+        def _handle_event(event) -> None:  # noqa: ANN001
+            entity_id = event.data.get("entity_id")
+            if not entity_id:
+                return
+
+            for area in self.areas.values():
+                entity = area.entities.entities.get(entity_id)
+                if entity is None:
+                    continue
+
+                transitioned = entity.has_new_evidence()
+                if not transitioned:
+                    continue
+
+                # False-negative learning: motion quickly after unoccupied.
+                if (
+                    entity.type.input_type == InputType.MOTION
+                    and area.config.adaptive_decay_enabled
+                    and entity.evidence is True
+                ):
+                    last_unocc = self._last_unoccupied_at.get(area.area_name)
+                    if last_unocc is not None:
+                        window_s = int(area.config.adaptive_false_negative_window)
+                        if (dt_util.utcnow() - last_unocc).total_seconds() <= window_s:
+                            old = float(area.config.adaptive_decay_multiplier)
+                            max_mult = float(area.config.adaptive_decay_max_multiplier)
+                            new = min(max_mult, old + 0.2)
+                            if new > old:
+                                area.config.adaptive_decay_multiplier = new
+                                self._adaptive_dirty_areas.add(area.area_name)
+                                area.last_transition_at = dt_util.utcnow()
+                                area.last_transition_reason = "false_negative_learned"
+
+                if self._setup_complete:
+                    # Schedule refresh; don't await inside callback.
+                    self.hass.async_create_task(self.async_refresh())
+
+        self._area_state_listeners["_global"] = async_track_state_change_event(
+            self.hass, entity_ids, _handle_event
+        )
+
+    def _persist_adaptive_learning(self) -> None:
+        """Persist learned adaptive multiplier into config entry options."""
+        if not self._adaptive_dirty_areas:
+            return
+
+        merged = dict(self.config_entry.data)
+        merged.update(self.config_entry.options)
+        areas_list = merged.get(CONF_AREAS, [])
+        if not isinstance(areas_list, list):
+            return
+
+        dirty_ids: set[str] = {
+            self.areas[a].config.area_id
+            for a in self._adaptive_dirty_areas
+            if a in self.areas and self.areas[a].config.area_id
+        }
+        if not dirty_ids:
+            self._adaptive_dirty_areas.clear()
+            return
+
+        updated = []
+        changed = False
+        for area_data in areas_list:
+            if not isinstance(area_data, dict):
+                updated.append(area_data)
+                continue
+            area_id = area_data.get(CONF_AREA_ID)
+            if area_id in dirty_ids:
+                # Resolve current area_name for this area_id.
+                for area in self.areas.values():
+                    if area.config.area_id == area_id:
+                        new_mult = float(area.config.adaptive_decay_multiplier)
+                        if float(area_data.get(CONF_ADAPTIVE_DECAY_MULTIPLIER, 1.0)) != new_mult:
+                            area_data = dict(area_data)
+                            area_data[CONF_ADAPTIVE_DECAY_MULTIPLIER] = new_mult
+                            changed = True
+                        break
+            updated.append(area_data)
+
+        if changed:
+            new_options = dict(self.config_entry.options)
+            new_options[CONF_AREAS] = updated
+            self.hass.config_entries.async_update_entry(self.config_entry, options=new_options)
+
+        self._adaptive_dirty_areas.clear()
 
     async def async_shutdown(self) -> None:
         """Shutdown the coordinator.
@@ -942,6 +1089,7 @@ class AreaOccupancyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         # Refresh cached correlations for new areas
         await self.async_refresh_correlations()
+        await self.async_refresh_transition_counts()
 
         # Reconcile restored entity state with current HA reality
         self._reconcile_entity_state()
@@ -1018,17 +1166,25 @@ class AreaOccupancyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def _apply_transition_boost(self, source_area: Area) -> None:
         """Apply transient prior boosts to adjacent areas."""
         try:
-            delta = float(source_area.config.transition_boost_logit)
+            base_logit = float(source_area.config.transition_boost_logit)
             window_s = int(source_area.config.transition_boost_window)
         except (TypeError, ValueError, AttributeError):
             return
-        if delta <= 0 or window_s <= 0:
+        if base_logit <= 0 or window_s <= 0:
             return
+        targets = [
+            n
+            for n in source_area.config.adjacent_area_names()
+            if n != source_area.area_name and n in self.areas
+        ]
+        if not targets:
+            return
+        raw = self._transition_counts.get(source_area.area_name, {})
+        weights = weights_for_adjacent_targets(targets, raw)
         expires_at = dt_util.utcnow() + timedelta(seconds=window_s)
-        for target_name in source_area.config.adjacent_area_names():
-            if target_name == source_area.area_name:
-                continue
-            if target_name not in self.areas:
+        for target_name, w in weights.items():
+            delta = base_logit * w
+            if delta <= 0:
                 continue
             self._transient_prior_boosts.setdefault(target_name, []).append(
                 (expires_at, delta, source_area.area_name)
@@ -1052,6 +1208,7 @@ class AreaOccupancyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         try:
             await self.hass.async_add_executor_job(self.db.save_data)
+            self._persist_adaptive_learning()
             _LOGGER.debug(
                 "Periodic database save completed for areas: %s",
                 format_area_names(self),

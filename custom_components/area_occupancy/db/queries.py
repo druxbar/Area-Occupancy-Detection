@@ -590,3 +590,29 @@ def get_total_occupied_seconds(
         "Total occupied seconds (Python) for %s: %.1f", area_name, total_seconds
     )
     return total_seconds
+
+
+def get_area_transition_counts_matrix(
+    db: AreaOccupancyDB,
+    entry_id: str,
+) -> dict[str, dict[str, float]]:
+    """Return learned transition counts as nested dict from_area -> to_area -> count."""
+    result: dict[str, dict[str, float]] = {}
+    try:
+        with db.get_session() as session:
+            rows = (
+                session.query(db.AreaTransitionCounts)
+                .filter_by(entry_id=entry_id)
+                .all()
+            )
+            for row in rows:
+                if row.transition_count <= 0:
+                    continue
+                result.setdefault(row.from_area_name, {})[row.to_area_name] = float(
+                    row.transition_count
+                )
+    except (SQLAlchemyError, ValueError, TypeError, RuntimeError, OSError) as e:
+        _LOGGER.error("Error loading area transition counts: %s", e)
+        return {}
+    else:
+        return result

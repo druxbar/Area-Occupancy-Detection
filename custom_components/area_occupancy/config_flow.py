@@ -90,9 +90,16 @@ from .const import (
     CONF_TRANSITION_BOOST_ENABLED,
     CONF_TRANSITION_BOOST_LOGIT,
     CONF_TRANSITION_BOOST_WINDOW,
+    CONF_TRANSITION_LEARN_DECAY,
+    CONF_TRANSITION_LEARN_ENABLED,
+    CONF_TRANSITION_LEARN_MAX_GAP,
     CONF_QUICK_VISIT_DECAY_ENABLED,
     CONF_QUICK_VISIT_DECAY_HALF_LIFE,
     CONF_QUICK_VISIT_MAX_DURATION,
+    CONF_ADAPTIVE_DECAY_ENABLED,
+    CONF_ADAPTIVE_FALSE_NEGATIVE_WINDOW,
+    CONF_ADAPTIVE_DECAY_MAX_MULTIPLIER,
+    CONF_ADAPTIVE_DECAY_MULTIPLIER,
     CONF_AUTO_WEIGHT_ALPHA,
     CONF_AUTO_WEIGHT_ENABLED,
     CONF_SOUND_PRESSURE_SENSORS,
@@ -135,9 +142,16 @@ from .const import (
     DEFAULT_QUICK_VISIT_DECAY_ENABLED,
     DEFAULT_QUICK_VISIT_DECAY_HALF_LIFE,
     DEFAULT_QUICK_VISIT_MAX_DURATION,
+    DEFAULT_ADAPTIVE_DECAY_ENABLED,
+    DEFAULT_ADAPTIVE_FALSE_NEGATIVE_WINDOW,
+    DEFAULT_ADAPTIVE_DECAY_MAX_MULTIPLIER,
+    DEFAULT_ADAPTIVE_DECAY_MULTIPLIER,
     DEFAULT_TRANSITION_BOOST_ENABLED,
     DEFAULT_TRANSITION_BOOST_LOGIT,
     DEFAULT_TRANSITION_BOOST_WINDOW,
+    DEFAULT_TRANSITION_LEARN_DECAY,
+    DEFAULT_TRANSITION_LEARN_ENABLED,
+    DEFAULT_TRANSITION_LEARN_MAX_GAP,
     DEFAULT_THRESHOLD,
     DEFAULT_WASP_MAX_DURATION,
     DEFAULT_WASP_MOTION_TIMEOUT,
@@ -160,6 +174,7 @@ from .const import (
     get_state_options,
 )
 from .data.purpose import Purpose, get_purpose_options
+from .data.entity_type import InputType, suggest_input_type_from_ha_entity
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -171,6 +186,35 @@ WEIGHT_MAX = 1
 THRESHOLD_STEP = 1
 THRESHOLD_MIN = 1
 THRESHOLD_MAX = 100
+
+# Suggest-only discovery fields (UI-only; merged into real fields on submit)
+_CONF_SUGGEST_ADD_POWER_SENSORS = "suggest_add_power_sensors"
+_CONF_SUGGEST_ADD_ILLUMINANCE_SENSORS = "suggest_add_illuminance_sensors"
+_CONF_SUGGEST_ADD_TEMPERATURE_SENSORS = "suggest_add_temperature_sensors"
+_CONF_SUGGEST_ADD_HUMIDITY_SENSORS = "suggest_add_humidity_sensors"
+_CONF_SUGGEST_ADD_PRESSURE_SENSORS = "suggest_add_pressure_sensors"
+_CONF_SUGGEST_ADD_AIR_QUALITY_SENSORS = "suggest_add_air_quality_sensors"
+_CONF_SUGGEST_ADD_PM25_SENSORS = "suggest_add_pm25_sensors"
+_CONF_SUGGEST_ADD_PM10_SENSORS = "suggest_add_pm10_sensors"
+_CONF_SUGGEST_ADD_CO2_SENSORS = "suggest_add_co2_sensors"
+_CONF_SUGGEST_ADD_CO_SENSORS = "suggest_add_co_sensors"
+_CONF_SUGGEST_ADD_SOUND_PRESSURE_SENSORS = "suggest_add_sound_pressure_sensors"
+_CONF_SUGGEST_ADD_VOC_SENSORS = "suggest_add_voc_sensors"
+
+_SUGGEST_KEY_TO_TARGET: dict[str, str] = {
+    _CONF_SUGGEST_ADD_POWER_SENSORS: CONF_POWER_SENSORS,
+    _CONF_SUGGEST_ADD_ILLUMINANCE_SENSORS: CONF_ILLUMINANCE_SENSORS,
+    _CONF_SUGGEST_ADD_TEMPERATURE_SENSORS: CONF_TEMPERATURE_SENSORS,
+    _CONF_SUGGEST_ADD_HUMIDITY_SENSORS: CONF_HUMIDITY_SENSORS,
+    _CONF_SUGGEST_ADD_PRESSURE_SENSORS: CONF_PRESSURE_SENSORS,
+    _CONF_SUGGEST_ADD_AIR_QUALITY_SENSORS: CONF_AIR_QUALITY_SENSORS,
+    _CONF_SUGGEST_ADD_PM25_SENSORS: CONF_PM25_SENSORS,
+    _CONF_SUGGEST_ADD_PM10_SENSORS: CONF_PM10_SENSORS,
+    _CONF_SUGGEST_ADD_CO2_SENSORS: CONF_CO2_SENSORS,
+    _CONF_SUGGEST_ADD_CO_SENSORS: CONF_CO_SENSORS,
+    _CONF_SUGGEST_ADD_SOUND_PRESSURE_SENSORS: CONF_SOUND_PRESSURE_SENSORS,
+    _CONF_SUGGEST_ADD_VOC_SENSORS: CONF_VOC_SENSORS,
+}
 
 
 def _seconds_to_duration(seconds: float) -> dict[str, int]:
@@ -461,6 +505,78 @@ def _get_include_entities(hass: HomeAssistant) -> dict[str, list[str]]:
         if entry.entity_id.startswith("cover.") and not entry.disabled
     ]
 
+
+def _get_area_entity_suggestions(
+    hass: HomeAssistant,
+    *,
+    area_id: str,
+    existing_entity_ids: set[str],
+    max_per_type: int = 10,
+) -> dict[str, list[str]]:
+    """Suggest entity_ids for an HA area, grouped by config keys.
+
+    Suggest-only: UI consumes this; submit-time merge happens in
+    ``_flatten_sectioned_input``.
+    """
+    if not area_id:
+        return {}
+
+    registry = er.async_get(hass)
+    suggestions: dict[str, list[str]] = {}
+
+    def _add(target_key: str, entity_id: str) -> None:
+        if entity_id in existing_entity_ids:
+            return
+        bucket = suggestions.setdefault(target_key, [])
+        if len(bucket) >= max_per_type:
+            return
+        bucket.append(entity_id)
+
+    for entry in registry.entities.values():
+        if entry.area_id != area_id:
+            continue
+
+        state = hass.states.get(entry.entity_id)
+        unit = None
+        if state is not None:
+            unit = state.attributes.get("unit_of_measurement")
+
+        device_class = entry.device_class or entry.original_device_class
+        itype, _reason = suggest_input_type_from_ha_entity(
+            domain=entry.domain,
+            device_class=str(device_class) if device_class is not None else None,
+            unit_of_measurement=str(unit) if unit is not None else None,
+        )
+        if itype is None:
+            continue
+
+        if itype == InputType.POWER:
+            _add(CONF_POWER_SENSORS, entry.entity_id)
+        elif itype == InputType.ILLUMINANCE:
+            _add(CONF_ILLUMINANCE_SENSORS, entry.entity_id)
+        elif itype == InputType.TEMPERATURE:
+            _add(CONF_TEMPERATURE_SENSORS, entry.entity_id)
+        elif itype == InputType.HUMIDITY:
+            _add(CONF_HUMIDITY_SENSORS, entry.entity_id)
+        elif itype == InputType.PRESSURE:
+            _add(CONF_PRESSURE_SENSORS, entry.entity_id)
+        elif itype == InputType.AIR_QUALITY:
+            _add(CONF_AIR_QUALITY_SENSORS, entry.entity_id)
+        elif itype == InputType.PM25:
+            _add(CONF_PM25_SENSORS, entry.entity_id)
+        elif itype == InputType.PM10:
+            _add(CONF_PM10_SENSORS, entry.entity_id)
+        elif itype == InputType.CO2:
+            _add(CONF_CO2_SENSORS, entry.entity_id)
+        elif itype == InputType.CO:
+            _add(CONF_CO_SENSORS, entry.entity_id)
+        elif itype == InputType.SOUND_PRESSURE:
+            _add(CONF_SOUND_PRESSURE_SENSORS, entry.entity_id)
+        elif itype == InputType.VOC:
+            _add(CONF_VOC_SENSORS, entry.entity_id)
+
+    return suggestions
+
     return {
         "appliance": include_appliance_entities,
         "window": include_window_entities,
@@ -734,10 +850,41 @@ def _create_environmental_section_schema(
     air_quality_entities: list[str],
     pm25_entities: list[str],
     pm10_entities: list[str],
+    *,
+    suggested: dict[str, list[str]] | None = None,
 ) -> vol.Schema:
     """Create schema for the environmental section."""
+    suggested = suggested or {}
+
+    suggest_fields: dict[vol.Marker, Any] = {}
+    suggest_map = [
+        (_CONF_SUGGEST_ADD_ILLUMINANCE_SENSORS, CONF_ILLUMINANCE_SENSORS),
+        (_CONF_SUGGEST_ADD_TEMPERATURE_SENSORS, CONF_TEMPERATURE_SENSORS),
+        (_CONF_SUGGEST_ADD_HUMIDITY_SENSORS, CONF_HUMIDITY_SENSORS),
+        (_CONF_SUGGEST_ADD_PRESSURE_SENSORS, CONF_PRESSURE_SENSORS),
+        (_CONF_SUGGEST_ADD_AIR_QUALITY_SENSORS, CONF_AIR_QUALITY_SENSORS),
+        (_CONF_SUGGEST_ADD_PM25_SENSORS, CONF_PM25_SENSORS),
+        (_CONF_SUGGEST_ADD_PM10_SENSORS, CONF_PM10_SENSORS),
+        (_CONF_SUGGEST_ADD_CO2_SENSORS, CONF_CO2_SENSORS),
+        (_CONF_SUGGEST_ADD_CO_SENSORS, CONF_CO_SENSORS),
+        (_CONF_SUGGEST_ADD_SOUND_PRESSURE_SENSORS, CONF_SOUND_PRESSURE_SENSORS),
+        (_CONF_SUGGEST_ADD_VOC_SENSORS, CONF_VOC_SENSORS),
+    ]
+    for suggest_key, target_key in suggest_map:
+        candidates = suggested.get(target_key, [])
+        if not candidates:
+            continue
+        suggest_fields[vol.Optional(suggest_key, default=[])] = SelectSelector(
+            SelectSelectorConfig(
+                options=[{"value": eid, "label": eid} for eid in candidates],
+                multiple=True,
+                mode=SelectSelectorMode.DROPDOWN,
+            )
+        )
+
     return vol.Schema(
         {
+            **suggest_fields,
             vol.Optional(
                 CONF_ILLUMINANCE_SENSORS,
                 default=defaults.get(CONF_ILLUMINANCE_SENSORS, []),
@@ -861,9 +1008,25 @@ def _create_environmental_section_schema(
     )
 
 
-def _create_power_section_schema(defaults: dict[str, Any]) -> vol.Schema:
+def _create_power_section_schema(
+    defaults: dict[str, Any],
+    *,
+    suggested: list[str] | None = None,
+) -> vol.Schema:
     """Create schema for the power section."""
-    return vol.Schema(
+    fields: dict[vol.Marker, Any] = {}
+    if suggested:
+        fields[vol.Optional(_CONF_SUGGEST_ADD_POWER_SENSORS, default=[])] = (
+            SelectSelector(
+                SelectSelectorConfig(
+                    options=[{"value": eid, "label": eid} for eid in suggested],
+                    multiple=True,
+                    mode=SelectSelectorMode.DROPDOWN,
+                )
+            )
+        )
+
+    fields.update(
         {
             vol.Optional(
                 CONF_POWER_SENSORS,
@@ -891,6 +1054,7 @@ def _create_power_section_schema(defaults: dict[str, Any]) -> vol.Schema:
             ),
         }
     )
+    return vol.Schema(fields)
 
 
 def _create_parameters_section_schema(
@@ -989,6 +1153,27 @@ def _create_parameters_section_schema(
             )
         ] = DurationSelector(DurationSelectorConfig(enable_day=False))
 
+        fields[
+            vol.Optional(
+                CONF_TRANSITION_LEARN_ENABLED,
+                default=defaults.get(
+                    CONF_TRANSITION_LEARN_ENABLED,
+                    DEFAULT_TRANSITION_LEARN_ENABLED,
+                ),
+            )
+        ] = BooleanSelector()
+        fields[
+            vol.Optional(
+                CONF_TRANSITION_LEARN_MAX_GAP,
+                default=_seconds_to_duration(
+                    defaults.get(
+                        CONF_TRANSITION_LEARN_MAX_GAP,
+                        DEFAULT_TRANSITION_LEARN_MAX_GAP,
+                    )
+                ),
+            )
+        ] = DurationSelector(DurationSelectorConfig(enable_day=False))
+
         # Quick-visit decay (motion-only)
         fields[
             vol.Optional(
@@ -1021,6 +1206,59 @@ def _create_parameters_section_schema(
                 ),
             )
         ] = DurationSelector(DurationSelectorConfig(enable_day=False))
+
+        # Adaptive false-negative learning (motion decay tuning)
+        fields[
+            vol.Optional(
+                CONF_ADAPTIVE_DECAY_ENABLED,
+                default=defaults.get(
+                    CONF_ADAPTIVE_DECAY_ENABLED, DEFAULT_ADAPTIVE_DECAY_ENABLED
+                ),
+            )
+        ] = BooleanSelector()
+        fields[
+            vol.Optional(
+                CONF_ADAPTIVE_FALSE_NEGATIVE_WINDOW,
+                default=_seconds_to_duration(
+                    defaults.get(
+                        CONF_ADAPTIVE_FALSE_NEGATIVE_WINDOW,
+                        DEFAULT_ADAPTIVE_FALSE_NEGATIVE_WINDOW,
+                    )
+                ),
+            )
+        ] = DurationSelector(DurationSelectorConfig(enable_day=False))
+        fields[
+            vol.Optional(
+                CONF_ADAPTIVE_DECAY_MAX_MULTIPLIER,
+                default=defaults.get(
+                    CONF_ADAPTIVE_DECAY_MAX_MULTIPLIER,
+                    DEFAULT_ADAPTIVE_DECAY_MAX_MULTIPLIER,
+                ),
+            )
+        ] = NumberSelector(
+            NumberSelectorConfig(
+                min=1.0,
+                max=10.0,
+                step=0.1,
+                mode=NumberSelectorMode.SLIDER,
+            )
+        )
+        fields[
+            vol.Optional(
+                CONF_ADAPTIVE_DECAY_MULTIPLIER,
+                default=defaults.get(
+                    CONF_ADAPTIVE_DECAY_MULTIPLIER,
+                    DEFAULT_ADAPTIVE_DECAY_MULTIPLIER,
+                ),
+            )
+        ] = NumberSelector(
+            NumberSelectorConfig(
+                min=1.0,
+                max=10.0,
+                step=0.1,
+                mode=NumberSelectorMode.SLIDER,
+            )
+        )
 
     return vol.Schema(fields)
 
@@ -1107,6 +1345,33 @@ def create_schema(
     # Get default area ID from defaults (for editing existing areas)
     default_area_id = defaults.get(CONF_AREA_ID, "")
 
+    existing_selected: set[str] = set()
+    for key in (
+        CONF_MOTION_SENSORS,
+        CONF_DOOR_SENSORS,
+        CONF_WINDOW_SENSORS,
+        CONF_COVER_SENSORS,
+        CONF_MEDIA_DEVICES,
+        CONF_APPLIANCES,
+        CONF_TEMPERATURE_SENSORS,
+        CONF_HUMIDITY_SENSORS,
+        CONF_ILLUMINANCE_SENSORS,
+        CONF_CO2_SENSORS,
+        CONF_CO_SENSORS,
+        CONF_SOUND_PRESSURE_SENSORS,
+        CONF_PRESSURE_SENSORS,
+        CONF_AIR_QUALITY_SENSORS,
+        CONF_VOC_SENSORS,
+        CONF_PM25_SENSORS,
+        CONF_PM10_SENSORS,
+        CONF_POWER_SENSORS,
+    ):
+        existing_selected.update(defaults.get(key, []) or [])
+
+    suggested_by_key = _get_area_entity_suggestions(
+        hass, area_id=default_area_id, existing_entity_ids=existing_selected
+    )
+
     # Add area selector (same for both initial and options flow)
     schema_dict[vol.Required(CONF_AREA_ID, default=default_area_id)] = AreaSelector(
         AreaSelectorConfig()
@@ -1163,11 +1428,15 @@ def create_schema(
             include_entities["air_quality"],
             include_entities["pm25"],
             include_entities["pm10"],
+            suggested=suggested_by_key,
         ),
         {"collapsed": True},
     )
     schema_dict[vol.Required("power")] = section(
-        _create_power_section_schema(defaults), {"collapsed": True}
+        _create_power_section_schema(
+            defaults, suggested=suggested_by_key.get(CONF_POWER_SENSORS)
+        ),
+        {"collapsed": True},
     )
     schema_dict[vol.Required("wasp_in_box")] = section(
         _create_wasp_in_box_section_schema(defaults), {"collapsed": True}
@@ -1700,6 +1969,15 @@ def _flatten_sectioned_input(user_input: dict[str, Any]) -> dict[str, Any]:
         if field in flattened_input:
             flattened_input[field] = _duration_to_seconds(flattened_input[field])
 
+    # Merge suggest-only discovery selections into the real config keys.
+    for suggest_key, target_key in _SUGGEST_KEY_TO_TARGET.items():
+        suggested = flattened_input.pop(suggest_key, None)
+        if not suggested:
+            continue
+        existing = flattened_input.get(target_key) or []
+        merged = list(dict.fromkeys([*existing, *suggested]))
+        flattened_input[target_key] = merged
+
     return flattened_input
 
 
@@ -1930,6 +2208,19 @@ def _create_global_settings_schema(defaults: dict[str, Any]) -> vol.Schema:
                     min=0.0,
                     max=1.0,
                     step=0.05,
+                    mode=NumberSelectorMode.SLIDER,
+                )
+            ),
+            vol.Optional(
+                CONF_TRANSITION_LEARN_DECAY,
+                default=defaults.get(
+                    CONF_TRANSITION_LEARN_DECAY, DEFAULT_TRANSITION_LEARN_DECAY
+                ),
+            ): NumberSelector(
+                NumberSelectorConfig(
+                    min=0.0,
+                    max=1.0,
+                    step=0.01,
                     mode=NumberSelectorMode.SLIDER,
                 )
             ),
@@ -2880,6 +3171,9 @@ class AreaOccupancyOptionsFlow(OptionsFlow, BaseOccupancyFlow):
             ),
             CONF_AUTO_WEIGHT_ALPHA: self.config_entry.options.get(
                 CONF_AUTO_WEIGHT_ALPHA, DEFAULT_AUTO_WEIGHT_ALPHA
+            ),
+            CONF_TRANSITION_LEARN_DECAY: self.config_entry.options.get(
+                CONF_TRANSITION_LEARN_DECAY, DEFAULT_TRANSITION_LEARN_DECAY
             ),
         }
 

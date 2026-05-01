@@ -43,14 +43,16 @@ async def run_full_analysis(
     2. Database health check and pruning
     3. Sensor health check (per-entity anomalies → repair issues)
     4. Populate occupied intervals cache
-    5. Run interval aggregation
-    6. Run numeric aggregation
-    7. Recalculate priors for all areas
-    8. Run correlation analysis
-    9. Pipeline health check (per-area calc anomalies → repair issues)
-    10. Save data (preserve decay state before refresh)
-    11. Refresh coordinator
-    12. Save data (persist all changes)
+    5. Learn area transition counts (opt-in per area)
+    6. Run interval aggregation
+    7. Run numeric aggregation
+    8. Recalculate priors for all areas
+    9. Run correlation analysis
+    10. Auto-weight calibration (if enabled)
+    11. Pipeline health check (per-area calc anomalies → repair issues)
+    12. Save data (preserve decay state before refresh)
+    13. Refresh coordinator
+    14. Save data (persist all changes)
 
     Args:
         coordinator: The coordinator instance containing areas and database
@@ -63,7 +65,7 @@ async def run_full_analysis(
 
     analysis_start_time = time.perf_counter()
     failed_steps: list[str] = []
-    total_steps = 13
+    total_steps = 14
 
     async def _run_step(step_num: int, step_name: str, coro: Awaitable[None]) -> None:
         """Run a single analysis step with timing and error tracking."""
@@ -121,6 +123,14 @@ async def run_full_analysis(
         for area in coordinator.areas.values():
             await area.run_prior_analysis()
 
+    async def _learn_transitions() -> None:
+        from .transition_model import run_transition_learning  # noqa: PLC0415
+
+        await coordinator.hass.async_add_executor_job(
+            run_transition_learning, coordinator, _now
+        )
+        await coordinator.async_refresh_transition_counts()
+
     async def _run_correlations() -> None:
         await run_correlation_analysis(coordinator)
         await coordinator.async_refresh_correlations()
@@ -172,19 +182,20 @@ async def run_full_analysis(
             "populate_occupied_intervals_cache",
             ensure_occupied_intervals_cache(coordinator),
         )
+        await _run_step(5, "transition_learning", _learn_transitions())
         await _run_step(
-            5, "interval_aggregation", run_interval_aggregation(coordinator, _now)
+            6, "interval_aggregation", run_interval_aggregation(coordinator, _now)
         )
         await _run_step(
-            6, "numeric_aggregation", run_numeric_aggregation(coordinator, _now)
+            7, "numeric_aggregation", run_numeric_aggregation(coordinator, _now)
         )
-        await _run_step(7, "recalculate_priors", _recalculate_priors())
-        await _run_step(8, "correlation_analysis", _run_correlations())
-        await _run_step(9, "auto_weight_calibration", _auto_weight_calibration())
-        await _run_step(10, "pipeline_health_check", _pipeline_health_check())
-        await _run_step(11, "save_data_before_refresh", _save_data())
-        await _run_step(12, "refresh_coordinator", _refresh())
-        await _run_step(13, "save_data_after_refresh", _save_data())
+        await _run_step(8, "recalculate_priors", _recalculate_priors())
+        await _run_step(9, "correlation_analysis", _run_correlations())
+        await _run_step(10, "auto_weight_calibration", _auto_weight_calibration())
+        await _run_step(11, "pipeline_health_check", _pipeline_health_check())
+        await _run_step(12, "save_data_before_refresh", _save_data())
+        await _run_step(13, "refresh_coordinator", _refresh())
+        await _run_step(14, "save_data_after_refresh", _save_data())
 
     except Exception as err:
         _LOGGER.error("Fatal error during analysis pipeline: %s", err)

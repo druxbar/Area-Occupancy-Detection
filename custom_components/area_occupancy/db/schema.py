@@ -689,6 +689,37 @@ class AreaRelationships(Base):
     )
 
 
+class AreaTransitionCounts(Base):
+    """Learned Markov-style counts: motion occupancy leaving A then shortly starting in B."""
+
+    __tablename__ = "area_transition_counts"
+    id = Column(Integer, primary_key=True)
+    entry_id = Column(String, nullable=False, index=True)
+    from_area_name = Column(String, nullable=False, index=True)
+    to_area_name = Column(String, nullable=False, index=True)
+    transition_count = Column(Float, nullable=False, default=0.0)
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=_utcnow_db,
+        onupdate=_utcnow_db,
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "entry_id",
+            "from_area_name",
+            "to_area_name",
+            name="uq_area_transition_counts_entry_from_to",
+        ),
+        Index(
+            "idx_area_transition_counts_entry_from",
+            "entry_id",
+            "from_area_name",
+        ),
+    )
+
+
 class CrossAreaStats(Base):
     """A table to store aggregated statistics that span multiple areas."""
 

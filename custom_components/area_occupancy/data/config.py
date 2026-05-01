@@ -55,9 +55,16 @@ from ..const import (
     CONF_TRANSITION_BOOST_ENABLED,
     CONF_TRANSITION_BOOST_LOGIT,
     CONF_TRANSITION_BOOST_WINDOW,
+    CONF_TRANSITION_LEARN_DECAY,
+    CONF_TRANSITION_LEARN_ENABLED,
+    CONF_TRANSITION_LEARN_MAX_GAP,
     CONF_QUICK_VISIT_DECAY_ENABLED,
     CONF_QUICK_VISIT_DECAY_HALF_LIFE,
     CONF_QUICK_VISIT_MAX_DURATION,
+    CONF_ADAPTIVE_DECAY_ENABLED,
+    CONF_ADAPTIVE_FALSE_NEGATIVE_WINDOW,
+    CONF_ADAPTIVE_DECAY_MAX_MULTIPLIER,
+    CONF_ADAPTIVE_DECAY_MULTIPLIER,
     CONF_AUTO_WEIGHT_ALPHA,
     CONF_AUTO_WEIGHT_ENABLED,
     CONF_SOUND_PRESSURE_SENSORS,
@@ -101,9 +108,16 @@ from ..const import (
     DEFAULT_QUICK_VISIT_DECAY_ENABLED,
     DEFAULT_QUICK_VISIT_DECAY_HALF_LIFE,
     DEFAULT_QUICK_VISIT_MAX_DURATION,
+    DEFAULT_ADAPTIVE_DECAY_ENABLED,
+    DEFAULT_ADAPTIVE_FALSE_NEGATIVE_WINDOW,
+    DEFAULT_ADAPTIVE_DECAY_MAX_MULTIPLIER,
+    DEFAULT_ADAPTIVE_DECAY_MULTIPLIER,
     DEFAULT_TRANSITION_BOOST_ENABLED,
     DEFAULT_TRANSITION_BOOST_LOGIT,
     DEFAULT_TRANSITION_BOOST_WINDOW,
+    DEFAULT_TRANSITION_LEARN_DECAY,
+    DEFAULT_TRANSITION_LEARN_ENABLED,
+    DEFAULT_TRANSITION_LEARN_MAX_GAP,
     DEFAULT_WASP_MAX_DURATION,
     DEFAULT_WASP_MOTION_TIMEOUT,
     DEFAULT_WASP_VERIFICATION_DELAY,
@@ -268,6 +282,19 @@ class IntegrationConfig:
         except (TypeError, ValueError):
             return DEFAULT_AUTO_WEIGHT_ALPHA
         return max(0.0, min(1.0, alpha))
+
+    @property
+    def transition_learn_decay(self) -> float:
+        """EMA factor applied to stored transition counts each analysis (0..1)."""
+        try:
+            d = float(
+                self.config_entry.options.get(
+                    CONF_TRANSITION_LEARN_DECAY, DEFAULT_TRANSITION_LEARN_DECAY
+                )
+            )
+        except (TypeError, ValueError):
+            return DEFAULT_TRANSITION_LEARN_DECAY
+        return max(0.0, min(1.0, d))
 
     def get_people_for_area(self, area_id: str) -> list[PersonConfig]:
         """Get people configured for a specific area."""
@@ -627,6 +654,17 @@ class AreaConfig:
             self.transition_boost_window = DEFAULT_TRANSITION_BOOST_WINDOW
         self.transition_boost_window = max(1, min(3600, self.transition_boost_window))
 
+        self.transition_learn_enabled = bool(
+            data.get(CONF_TRANSITION_LEARN_ENABLED, DEFAULT_TRANSITION_LEARN_ENABLED)
+        )
+        try:
+            self.transition_learn_max_gap = int(
+                data.get(CONF_TRANSITION_LEARN_MAX_GAP, DEFAULT_TRANSITION_LEARN_MAX_GAP)
+            )
+        except (TypeError, ValueError):
+            self.transition_learn_max_gap = DEFAULT_TRANSITION_LEARN_MAX_GAP
+        self.transition_learn_max_gap = max(5, min(3600, self.transition_learn_max_gap))
+
         # Quick-visit decay settings (per-area; motion-only)
         self.quick_visit_decay_enabled = bool(
             data.get(CONF_QUICK_VISIT_DECAY_ENABLED, DEFAULT_QUICK_VISIT_DECAY_ENABLED)
@@ -649,6 +687,46 @@ class AreaConfig:
         except (TypeError, ValueError):
             self.quick_visit_decay_half_life = DEFAULT_QUICK_VISIT_DECAY_HALF_LIFE
         self.quick_visit_decay_half_life = max(1, min(600, self.quick_visit_decay_half_life))
+
+        # Adaptive false-negative learning (per-area; motion decay tuning)
+        self.adaptive_decay_enabled = bool(
+            data.get(CONF_ADAPTIVE_DECAY_ENABLED, DEFAULT_ADAPTIVE_DECAY_ENABLED)
+        )
+        try:
+            self.adaptive_false_negative_window = int(
+                data.get(
+                    CONF_ADAPTIVE_FALSE_NEGATIVE_WINDOW,
+                    DEFAULT_ADAPTIVE_FALSE_NEGATIVE_WINDOW,
+                )
+            )
+        except (TypeError, ValueError):
+            self.adaptive_false_negative_window = DEFAULT_ADAPTIVE_FALSE_NEGATIVE_WINDOW
+        self.adaptive_false_negative_window = max(
+            10, min(1800, self.adaptive_false_negative_window)
+        )
+
+        try:
+            self.adaptive_decay_max_multiplier = float(
+                data.get(
+                    CONF_ADAPTIVE_DECAY_MAX_MULTIPLIER,
+                    DEFAULT_ADAPTIVE_DECAY_MAX_MULTIPLIER,
+                )
+            )
+        except (TypeError, ValueError):
+            self.adaptive_decay_max_multiplier = DEFAULT_ADAPTIVE_DECAY_MAX_MULTIPLIER
+        self.adaptive_decay_max_multiplier = max(
+            1.0, min(10.0, self.adaptive_decay_max_multiplier)
+        )
+
+        try:
+            self.adaptive_decay_multiplier = float(
+                data.get(CONF_ADAPTIVE_DECAY_MULTIPLIER, DEFAULT_ADAPTIVE_DECAY_MULTIPLIER)
+            )
+        except (TypeError, ValueError):
+            self.adaptive_decay_multiplier = DEFAULT_ADAPTIVE_DECAY_MULTIPLIER
+        self.adaptive_decay_multiplier = max(
+            1.0, min(self.adaptive_decay_max_multiplier, self.adaptive_decay_multiplier)
+        )
 
     def adjacent_area_names(self) -> list[str]:
         """Resolve adjacent area_ids to current HA area names."""

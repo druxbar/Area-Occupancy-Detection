@@ -627,6 +627,16 @@ class Entity:
                         override_half_life = float(
                             getattr(self.area_config, "quick_visit_decay_half_life", 0)
                         )
+                # Adaptive false-negative learning: extend motion decay half-life.
+                if (
+                    self.type.input_type == InputType.MOTION
+                    and self.area_config is not None
+                    and getattr(self.area_config, "adaptive_decay_enabled", False)
+                ):
+                    mult = float(getattr(self.area_config, "adaptive_decay_multiplier", 1.0))
+                    if mult > 1.0:
+                        base = override_half_life or float(self.decay.half_life)
+                        override_half_life = base * mult
                 self.decay.start_decay(override_half_life=override_half_life)
                 self.last_true_start = None
 

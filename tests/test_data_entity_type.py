@@ -8,6 +8,7 @@ from custom_components.area_occupancy.data.entity_type import (
     DEFAULT_TYPES,
     EntityType,
     InputType,
+    suggest_input_type_from_ha_entity,
 )
 from homeassistant.const import STATE_ON
 
@@ -357,3 +358,59 @@ class TestEntityType:
                 DEFAULT_TYPES[InputType.UNKNOWN] = original_unknown
             if original_co2 is not None:
                 DEFAULT_TYPES[test_type] = original_co2
+
+
+class TestSuggestInputTypeFromHaEntity:
+    """Test mapping entity metadata to InputType suggestions."""
+
+    def test_power_by_unit(self) -> None:
+        """Unit-based mapping for power sensors."""
+        itype, reason = suggest_input_type_from_ha_entity(
+            domain="sensor", device_class=None, unit_of_measurement="W"
+        )
+        assert itype == InputType.POWER
+        assert reason
+
+    def test_power_by_device_class(self) -> None:
+        itype, _reason = suggest_input_type_from_ha_entity(
+            domain="sensor", device_class="power", unit_of_measurement=None
+        )
+        assert itype == InputType.POWER
+
+    def test_illuminance(self) -> None:
+        itype, _reason = suggest_input_type_from_ha_entity(
+            domain="sensor", device_class="illuminance", unit_of_measurement="lx"
+        )
+        assert itype == InputType.ILLUMINANCE
+
+    def test_motion_binary_sensor(self) -> None:
+        itype, _reason = suggest_input_type_from_ha_entity(
+            domain="binary_sensor", device_class="motion", unit_of_measurement=None
+        )
+        assert itype == InputType.MOTION
+
+    def test_door_binary_sensor(self) -> None:
+        itype, _reason = suggest_input_type_from_ha_entity(
+            domain="binary_sensor", device_class="door", unit_of_measurement=None
+        )
+        assert itype == InputType.DOOR
+
+    def test_window_binary_sensor(self) -> None:
+        itype, _reason = suggest_input_type_from_ha_entity(
+            domain="binary_sensor", device_class="window", unit_of_measurement=None
+        )
+        assert itype == InputType.WINDOW
+
+    def test_opening_ambiguous_binary_sensor(self) -> None:
+        itype, reason = suggest_input_type_from_ha_entity(
+            domain="binary_sensor", device_class="opening", unit_of_measurement=None
+        )
+        assert itype is None
+        assert "ambiguous" in (reason or "")
+
+    def test_unknown_domain(self) -> None:
+        itype, reason = suggest_input_type_from_ha_entity(
+            domain="light", device_class=None, unit_of_measurement=None
+        )
+        assert itype is None
+        assert reason is None
