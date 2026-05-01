@@ -228,6 +228,12 @@ class ProbabilitySensor(AreaOccupancySensorBase):
             **snapshot,
             "active_entities": active_entities,
             "decaying_entities": decaying_entities,
+            "last_transition_at": (
+                area.last_transition_at.isoformat() if area.last_transition_at else None
+            ),
+            "last_transition_from": area.last_transition_from,
+            "last_transition_to": area.last_transition_to,
+            "last_transition_reason": area.last_transition_reason,
             "transition_boosts": area.coordinator.get_transient_prior_sources(
                 area.area_name
             ),

@@ -34,6 +34,7 @@ from custom_components.area_occupancy.const import (
     CONF_PURPOSE,
     CONF_SLEEP_END,
     CONF_SLEEP_START,
+    CONF_TRANSITION_LEARN_DECAY,
     CONF_SOUND_PRESSURE_SENSORS,
     CONF_TEMPERATURE_SENSORS,
     CONF_THRESHOLD,
@@ -51,6 +52,7 @@ from custom_components.area_occupancy.const import (
     DEFAULT_SLEEP_CONFIDENCE_THRESHOLD,
     DEFAULT_SLEEP_END,
     DEFAULT_SLEEP_START,
+    DEFAULT_TRANSITION_LEARN_DECAY,
     DEFAULT_WEIGHT_MEDIA,
     DEFAULT_WEIGHT_MOTION,
     HA_RECORDER_DAYS,
@@ -1092,6 +1094,17 @@ class TestIntegrationConfig:
         mock_realistic_config_entry.options = {config_key: custom_value}
         integration_config = IntegrationConfig(coordinator, mock_realistic_config_entry)
         assert getattr(integration_config, property_name) == custom_value
+
+    def test_transition_learn_decay_option(
+        self, hass: HomeAssistant, mock_realistic_config_entry: Mock
+    ) -> None:
+        """EMA decay for transition counts is read from options (0..1)."""
+        coordinator = AreaOccupancyCoordinator(hass, mock_realistic_config_entry)
+        cfg = IntegrationConfig(coordinator, mock_realistic_config_entry)
+        assert cfg.transition_learn_decay == DEFAULT_TRANSITION_LEARN_DECAY
+        mock_realistic_config_entry.options = {CONF_TRANSITION_LEARN_DECAY: 0.88}
+        cfg = IntegrationConfig(coordinator, mock_realistic_config_entry)
+        assert cfg.transition_learn_decay == pytest.approx(0.88)
 
     def test_integration_name_from_config_entry(
         self, hass: HomeAssistant, mock_realistic_config_entry: Mock

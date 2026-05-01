@@ -392,3 +392,69 @@ DEFAULT_TYPES: dict[InputType, dict[str, Any]] = {
         "strength_multiplier": 2.0,
     },
 }
+
+
+def suggest_input_type_from_ha_entity(
+    *,
+    domain: str,
+    device_class: str | None,
+    unit_of_measurement: str | None,
+) -> tuple[InputType | None, str | None]:
+    """Suggest InputType from Home Assistant entity metadata.
+
+    Used by config/options flow to propose sensors by type. Conservative:
+    returns None when it cannot confidently classify.
+    """
+    domain = (domain or "").lower()
+    device_class = (device_class or "").lower() or None
+    unit = (unit_of_measurement or "").strip().lower() or None
+
+    if domain == "binary_sensor":
+        if device_class in {"motion", "occupancy"}:
+            return (InputType.MOTION, f"binary_sensor device_class={device_class}")
+        if device_class in {"door", "garage_door", "lock"}:
+            return (InputType.DOOR, f"binary_sensor device_class={device_class}")
+        if device_class in {"window"}:
+            return (InputType.WINDOW, f"binary_sensor device_class={device_class}")
+        if device_class in {"opening"}:
+            # Ambiguous door vs window; keep conservative default.
+            return (None, "binary_sensor device_class=opening ambiguous")
+        return (None, None)
+
+    if domain == "cover":
+        return (InputType.COVER, "cover domain")
+
+    if domain != "sensor":
+        return (None, None)
+
+    # Sensor device_class mappings (HA core names)
+    if device_class == "temperature":
+        return (InputType.TEMPERATURE, "sensor device_class=temperature")
+    if device_class == "humidity":
+        return (InputType.HUMIDITY, "sensor device_class=humidity")
+    if device_class == "illuminance":
+        return (InputType.ILLUMINANCE, "sensor device_class=illuminance")
+    if device_class == "carbon_dioxide":
+        return (InputType.CO2, "sensor device_class=carbon_dioxide")
+    if device_class == "carbon_monoxide":
+        return (InputType.CO, "sensor device_class=carbon_monoxide")
+    if device_class in {"sound_pressure", "sound_pressure_level"}:
+        return (InputType.SOUND_PRESSURE, f"sensor device_class={device_class}")
+    if device_class == "pressure":
+        return (InputType.PRESSURE, "sensor device_class=pressure")
+    if device_class in {"aqi", "air_quality"}:
+        return (InputType.AIR_QUALITY, f"sensor device_class={device_class}")
+    if device_class == "volatile_organic_compounds":
+        return (InputType.VOC, "sensor device_class=volatile_organic_compounds")
+    if device_class == "pm25":
+        return (InputType.PM25, "sensor device_class=pm25")
+    if device_class == "pm10":
+        return (InputType.PM10, "sensor device_class=pm10")
+    if device_class == "power":
+        return (InputType.POWER, "sensor device_class=power")
+
+    # Unit-based fallbacks (for integrations that don't set device_class).
+    if unit in {"w", "kw"}:
+        return (InputType.POWER, f"sensor unit={unit}")
+
+    return (None, None)

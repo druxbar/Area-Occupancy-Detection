@@ -1305,7 +1305,6 @@ class TestAreaOccupancyCoordinator:
         assert delta == pytest.approx(0.6)
         sources = coordinator.get_transient_prior_sources(target.area_name)
         assert any(s["source_area"] == source.area_name for s in sources)
-            assert handle3 is not None
 
     def test_get_all_areas_lazy_initialization(
         self, coordinator: AreaOccupancyCoordinator

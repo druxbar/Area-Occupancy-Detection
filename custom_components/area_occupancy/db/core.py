@@ -37,6 +37,7 @@ from . import (
 )
 from .schema import (
     AreaRelationships,
+    AreaTransitionCounts,
     Areas,
     Correlations,
     CrossAreaStats,
@@ -135,6 +136,7 @@ class AreaOccupancyDB:
     Correlations = Correlations
     EntityStatistics = EntityStatistics
     AreaRelationships = AreaRelationships
+    AreaTransitionCounts = AreaTransitionCounts
     CrossAreaStats = CrossAreaStats
 
     def __init__(
@@ -213,6 +215,7 @@ class AreaOccupancyDB:
             "Correlations",
             "EntityStatistics",
             "AreaRelationships",
+            "AreaTransitionCounts",
             "CrossAreaStats",
         ]
         self.model_classes = {name: getattr(self, name) for name in schema_model_names}

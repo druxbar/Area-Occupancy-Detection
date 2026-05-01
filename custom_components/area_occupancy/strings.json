@@ -288,6 +288,17 @@
                         "name": "Environmental Sensors",
                         "description": "Configure environmental sensors",
                         "data": {
+                            "suggest_add_illuminance_sensors": "Suggested Illuminance Sensors",
+                            "suggest_add_temperature_sensors": "Suggested Temperature Sensors",
+                            "suggest_add_humidity_sensors": "Suggested Humidity Sensors",
+                            "suggest_add_pressure_sensors": "Suggested Pressure Sensors",
+                            "suggest_add_air_quality_sensors": "Suggested Air Quality Sensors",
+                            "suggest_add_pm25_sensors": "Suggested PM2.5 Sensors",
+                            "suggest_add_pm10_sensors": "Suggested PM10 Sensors",
+                            "suggest_add_co2_sensors": "Suggested CO2 Sensors",
+                            "suggest_add_co_sensors": "Suggested CO Sensors",
+                            "suggest_add_sound_pressure_sensors": "Suggested Sound Pressure Sensors",
+                            "suggest_add_voc_sensors": "Suggested VOC Sensors",
                             "illuminance_sensors": "Illuminance Sensors",
                             "humidity_sensors": "Humidity Sensors",
                             "temperature_sensors": "Temperature Sensors",
@@ -302,6 +313,17 @@
                             "weight_environmental": "Environmental Weight"
                         },
                         "data_description": {
+                            "suggest_add_illuminance_sensors": "Optional. Suggested sensors detected in the selected Home Assistant area. Selecting items here will add them to Illuminance Sensors.",
+                            "suggest_add_temperature_sensors": "Optional. Suggested sensors detected in the selected Home Assistant area. Selecting items here will add them to Temperature Sensors.",
+                            "suggest_add_humidity_sensors": "Optional. Suggested sensors detected in the selected Home Assistant area. Selecting items here will add them to Humidity Sensors.",
+                            "suggest_add_pressure_sensors": "Optional. Suggested sensors detected in the selected Home Assistant area. Selecting items here will add them to Atmospheric Pressure Sensors.",
+                            "suggest_add_air_quality_sensors": "Optional. Suggested sensors detected in the selected Home Assistant area. Selecting items here will add them to Air Quality Index Sensors.",
+                            "suggest_add_pm25_sensors": "Optional. Suggested sensors detected in the selected Home Assistant area. Selecting items here will add them to PM2.5 Sensors.",
+                            "suggest_add_pm10_sensors": "Optional. Suggested sensors detected in the selected Home Assistant area. Selecting items here will add them to PM10 Sensors.",
+                            "suggest_add_co2_sensors": "Optional. Suggested sensors detected in the selected Home Assistant area. Selecting items here will add them to CO2 Sensors.",
+                            "suggest_add_co_sensors": "Optional. Suggested sensors detected in the selected Home Assistant area. Selecting items here will add them to CO Sensors.",
+                            "suggest_add_sound_pressure_sensors": "Optional. Suggested sensors detected in the selected Home Assistant area. Selecting items here will add them to Sound Pressure Sensors.",
+                            "suggest_add_voc_sensors": "Optional. Suggested sensors detected in the selected Home Assistant area. Selecting items here will add them to VOC Sensors.",
                             "co2_sensors": "Carbon dioxide sensors that detect increased CO2 levels from human respiration, indicating occupancy.",
                             "co_sensors": "Carbon monoxide sensors that detect increased CO levels from combustion sources and human activity (cooking, heating), indicating occupancy.",
                             "sound_pressure_sensors": "Sound pressure sensors (decibels) that detect noise from human activity, indicating occupancy.",
@@ -317,10 +339,12 @@
                         "name": "Power Sensors",
                         "description": "Configure power consumption sensors",
                         "data": {
+                            "suggest_add_power_sensors": "Suggested Power Sensors",
                             "power_sensors": "Power Sensors",
                             "weight_power": "Power Weight"
                         },
                         "data_description": {
+                            "suggest_add_power_sensors": "Optional. Suggested sensors detected in the selected Home Assistant area. Selecting items here will add them to Power Sensors.",
                             "power_sensors": "Power sensors that measure power consumption (W/kW). When consumption is above baseline levels, it indicates active device usage and potential occupancy.",
                             "weight_power": "The weight given to power sensor inputs in the occupancy calculation."
                         }

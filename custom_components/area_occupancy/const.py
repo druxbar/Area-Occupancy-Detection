@@ -96,11 +96,22 @@ CONF_ADJACENT_AREAS: Final = "adjacent_areas"
 CONF_TRANSITION_BOOST_ENABLED: Final = "transition_boost_enabled"
 CONF_TRANSITION_BOOST_LOGIT: Final = "transition_boost_logit"
 CONF_TRANSITION_BOOST_WINDOW: Final = "transition_boost_window"
+CONF_TRANSITION_LEARN_ENABLED: Final = "transition_learn_enabled"
+CONF_TRANSITION_LEARN_MAX_GAP: Final = "transition_learn_max_gap"
+# Global (options): EMA decay applied to stored counts each analysis when learning runs.
+CONF_TRANSITION_LEARN_DECAY: Final = "transition_learn_decay"
 
 # Quick-visit decay (per-area)
 CONF_QUICK_VISIT_DECAY_ENABLED: Final = "quick_visit_decay_enabled"
 CONF_QUICK_VISIT_MAX_DURATION: Final = "quick_visit_max_duration"
 CONF_QUICK_VISIT_DECAY_HALF_LIFE: Final = "quick_visit_decay_half_life"
+
+# Adaptive false-negative learning (per-area)
+CONF_ADAPTIVE_DECAY_ENABLED: Final = "adaptive_decay_enabled"
+CONF_ADAPTIVE_FALSE_NEGATIVE_WINDOW: Final = "adaptive_false_negative_window"
+CONF_ADAPTIVE_DECAY_MAX_MULTIPLIER: Final = "adaptive_decay_max_multiplier"
+# Learned (persisted) multiplier applied to motion decay half-life.
+CONF_ADAPTIVE_DECAY_MULTIPLIER: Final = "adaptive_decay_multiplier"
 
 # Auto-weight calibration (global)
 CONF_AUTO_WEIGHT_ENABLED: Final = "auto_weight_enabled"
@@ -162,6 +173,9 @@ DEFAULT_TRANSITION_BOOST_ENABLED: Final = False
 DEFAULT_TRANSITION_BOOST_LOGIT: Final[float] = 0.4
 # Seconds boost remains active after transition
 DEFAULT_TRANSITION_BOOST_WINDOW: Final = 60
+DEFAULT_TRANSITION_LEARN_ENABLED: Final = False
+DEFAULT_TRANSITION_LEARN_MAX_GAP: Final = 120
+DEFAULT_TRANSITION_LEARN_DECAY: Final = 0.97
 
 # Quick-visit decay defaults
 DEFAULT_QUICK_VISIT_DECAY_ENABLED: Final = False
@@ -169,6 +183,15 @@ DEFAULT_QUICK_VISIT_DECAY_ENABLED: Final = False
 DEFAULT_QUICK_VISIT_MAX_DURATION: Final = 10
 # Override half-life (seconds) used for that decay run only
 DEFAULT_QUICK_VISIT_DECAY_HALF_LIFE: Final = 15
+
+# Adaptive false-negative learning defaults
+DEFAULT_ADAPTIVE_DECAY_ENABLED: Final = False
+# If area became unoccupied and motion happens within this window, treat as false-negative.
+DEFAULT_ADAPTIVE_FALSE_NEGATIVE_WINDOW: Final = 120
+# Upper bound for learned multiplier.
+DEFAULT_ADAPTIVE_DECAY_MAX_MULTIPLIER: Final[float] = 3.0
+# Default learned multiplier (1.0 = no change).
+DEFAULT_ADAPTIVE_DECAY_MULTIPLIER: Final[float] = 1.0
 
 # Auto-weight calibration defaults
 DEFAULT_AUTO_WEIGHT_ENABLED: Final = False
@@ -552,6 +575,8 @@ DURATION_FIELDS: Final[set[str]] = {
     CONF_WASP_MOTION_TIMEOUT,
     CONF_WASP_VERIFICATION_DELAY,
     CONF_TRANSITION_BOOST_WINDOW,
+    CONF_TRANSITION_LEARN_MAX_GAP,
     CONF_QUICK_VISIT_MAX_DURATION,
     CONF_QUICK_VISIT_DECAY_HALF_LIFE,
+    CONF_ADAPTIVE_FALSE_NEGATIVE_WINDOW,
 }
