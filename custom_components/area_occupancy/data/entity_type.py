@@ -414,9 +414,9 @@ def suggest_input_type_from_ha_entity(
             return (InputType.MOTION, f"binary_sensor device_class={device_class}")
         if device_class in {"door", "garage_door", "lock"}:
             return (InputType.DOOR, f"binary_sensor device_class={device_class}")
-        if device_class in {"window"}:
+        if device_class == "window":
             return (InputType.WINDOW, f"binary_sensor device_class={device_class}")
-        if device_class in {"opening"}:
+        if device_class == "opening":
             # Ambiguous door vs window; keep conservative default.
             return (None, "binary_sensor device_class=opening ambiguous")
         return (None, None)

@@ -11,8 +11,13 @@ from typing import TYPE_CHECKING
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.util import dt as dt_util
 
-from ..const import DEFAULT_LOOKBACK_DAYS, TIME_PRIOR_MAX_BOUND, TIME_PRIOR_MIN_BOUND
-from ..const import MAX_WEIGHT, MIN_WEIGHT
+from ..const import (
+    DEFAULT_LOOKBACK_DAYS,
+    MAX_WEIGHT,
+    MIN_WEIGHT,
+    TIME_PRIOR_MAX_BOUND,
+    TIME_PRIOR_MIN_BOUND,
+)
 from ..db.correlation import (
     CORRELATION_FAILURE_ERRORS,
     get_correlatable_entities_by_area,
@@ -33,7 +38,7 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 
-async def run_full_analysis(
+async def run_full_analysis(  # noqa: C901
     coordinator: AreaOccupancyCoordinator, _now: datetime | None = None
 ) -> None:
     """Run the full analysis chain for all areas.

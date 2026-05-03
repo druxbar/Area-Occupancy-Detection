@@ -20,8 +20,12 @@ from .area import AllAreas, AreaDeviceHandle, FloorAreas
 from .const import ALL_AREAS_IDENTIFIER
 from .data.activity import ActivityId
 from .data.entity_type import InputType
-from .utils import format_float, format_percentage, generate_entity_unique_id
-from .utils import sigmoid_contributions
+from .utils import (
+    format_float,
+    format_percentage,
+    generate_entity_unique_id,
+    sigmoid_contributions,
+)
 
 if TYPE_CHECKING:
     from .area import Area

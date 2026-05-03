@@ -41,8 +41,7 @@ from .data.analysis import run_full_analysis
 from .data.config import IntegrationConfig
 from .data.entity_type import InputType
 from .data.transition_model import weights_for_adjacent_targets
-from .db import AreaOccupancyDB
-from .db import queries as db_queries
+from .db import AreaOccupancyDB, queries as db_queries
 from .utils import format_area_names
 
 _LOGGER = logging.getLogger(__name__)
@@ -210,7 +209,9 @@ class AreaOccupancyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._prune_transient_boosts()
         now = dt_util.utcnow()
         result: list[dict[str, Any]] = []
-        for expires_at, delta, source in self._transient_prior_boosts.get(area_name, []):
+        for expires_at, delta, source in self._transient_prior_boosts.get(
+            area_name, []
+        ):
             result.append(
                 {
                     "source_area": source,
@@ -579,7 +580,9 @@ class AreaOccupancyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 area.last_transition_from = prev
                 area.last_transition_to = occupied_now
                 area.last_transition_reason = (
-                    "occupied_to_unoccupied" if prev and not occupied_now else "unoccupied_to_occupied"
+                    "occupied_to_unoccupied"
+                    if prev and not occupied_now
+                    else "unoccupied_to_occupied"
                 )
 
             result[area_name] = {
@@ -591,58 +594,6 @@ class AreaOccupancyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "last_updated": now,
             }
         return result
-
-    async def track_entity_state_changes(self, entity_ids: list[str]) -> None:
-        """Listen for state changes across all configured entity_ids."""
-        if not self.hass:
-            return
-
-        # Unsubscribe previous listener (single global listener in multi-area arch)
-        prev = self._area_state_listeners.pop("_global", None)
-        if prev is not None:
-            prev()
-
-        @callback
-        def _handle_event(event) -> None:  # noqa: ANN001
-            entity_id = event.data.get("entity_id")
-            if not entity_id:
-                return
-
-            for area in self.areas.values():
-                entity = area.entities.entities.get(entity_id)
-                if entity is None:
-                    continue
-
-                transitioned = entity.has_new_evidence()
-                if not transitioned:
-                    continue
-
-                # False-negative learning: motion quickly after unoccupied.
-                if (
-                    entity.type.input_type == InputType.MOTION
-                    and area.config.adaptive_decay_enabled
-                    and entity.evidence is True
-                ):
-                    last_unocc = self._last_unoccupied_at.get(area.area_name)
-                    if last_unocc is not None:
-                        window_s = int(area.config.adaptive_false_negative_window)
-                        if (dt_util.utcnow() - last_unocc).total_seconds() <= window_s:
-                            old = float(area.config.adaptive_decay_multiplier)
-                            max_mult = float(area.config.adaptive_decay_max_multiplier)
-                            new = min(max_mult, old + 0.2)
-                            if new > old:
-                                area.config.adaptive_decay_multiplier = new
-                                self._adaptive_dirty_areas.add(area.area_name)
-                                area.last_transition_at = dt_util.utcnow()
-                                area.last_transition_reason = "false_negative_learned"
-
-                if self._setup_complete:
-                    # Schedule refresh; don't await inside callback.
-                    self.hass.async_create_task(self.async_refresh())
-
-        self._area_state_listeners["_global"] = async_track_state_change_event(
-            self.hass, entity_ids, _handle_event
-        )
 
     def _persist_adaptive_learning(self) -> None:
         """Persist learned adaptive multiplier into config entry options."""
@@ -676,7 +627,10 @@ class AreaOccupancyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 for area in self.areas.values():
                     if area.config.area_id == area_id:
                         new_mult = float(area.config.adaptive_decay_multiplier)
-                        if float(area_data.get(CONF_ADAPTIVE_DECAY_MULTIPLIER, 1.0)) != new_mult:
+                        if (
+                            float(area_data.get(CONF_ADAPTIVE_DECAY_MULTIPLIER, 1.0))
+                            != new_mult
+                        ):
                             area_data = dict(area_data)
                             area_data[CONF_ADAPTIVE_DECAY_MULTIPLIER] = new_mult
                             changed = True
@@ -686,7 +640,9 @@ class AreaOccupancyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if changed:
             new_options = dict(self.config_entry.options)
             new_options[CONF_AREAS] = updated
-            self.hass.config_entries.async_update_entry(self.config_entry, options=new_options)
+            self.hass.config_entries.async_update_entry(
+                self.config_entry, options=new_options
+            )
 
         self._adaptive_dirty_areas.clear()
 
@@ -1211,10 +1167,35 @@ class AreaOccupancyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         continue
                     prev_evidence = entity.previous_evidence
                     transitioned = entity.has_new_evidence()
+                    # False-negative learning: motion quickly after unoccupied.
+                    if (
+                        transitioned
+                        and entity.type.input_type == InputType.MOTION
+                        and area.config.adaptive_decay_enabled
+                        and entity.evidence is True
+                    ):
+                        last_unocc = self._last_unoccupied_at.get(area.area_name)
+                        if last_unocc is not None:
+                            window_s = int(area.config.adaptive_false_negative_window)
+                            if (
+                                dt_util.utcnow() - last_unocc
+                            ).total_seconds() <= window_s:
+                                old = float(area.config.adaptive_decay_multiplier)
+                                max_mult = float(
+                                    area.config.adaptive_decay_max_multiplier
+                                )
+                                new = min(max_mult, old + 0.2)
+                                if new > old:
+                                    area.config.adaptive_decay_multiplier = new
+                                    self._adaptive_dirty_areas.add(area.area_name)
+                                    area.last_transition_at = dt_util.utcnow()
+                                    area.last_transition_reason = (
+                                        "false_negative_learned"
+                                    )
                     # Transition model: on motion activation, boost adjacent areas briefly.
                     if (
                         transitioned
-                        and entity.type.input_type.value == "motion"
+                        and entity.type.input_type == InputType.MOTION
                         and entity.evidence is True
                         and prev_evidence in (False, None)
                         and area.config.transition_boost_enabled
@@ -1233,7 +1214,7 @@ class AreaOccupancyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self.hass, entity_ids, _refresh_on_state_change
             )
             # Store listener (using a single key since we have one listener for all)
-            self._area_state_listeners["_all"] = listener
+            self._area_state_listeners["_global"] = listener
 
     def _apply_transition_boost(self, source_area: Area) -> None:
         """Apply transient prior boosts to adjacent areas."""

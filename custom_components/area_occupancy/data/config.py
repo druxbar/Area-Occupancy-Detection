@@ -14,11 +14,18 @@ from homeassistant.util import dt as dt_util
 
 from ..const import (
     ANALYSIS_INTERVAL,
+    CONF_ADAPTIVE_DECAY_ENABLED,
+    CONF_ADAPTIVE_DECAY_MAX_MULTIPLIER,
+    CONF_ADAPTIVE_DECAY_MULTIPLIER,
+    CONF_ADAPTIVE_FALSE_NEGATIVE_WINDOW,
+    CONF_ADJACENT_AREAS,
     CONF_AIR_QUALITY_SENSORS,
     CONF_APPLIANCE_ACTIVE_STATES,
     CONF_APPLIANCES,
     CONF_AREA_ID,
     CONF_AREAS,
+    CONF_AUTO_WEIGHT_ALPHA,
+    CONF_AUTO_WEIGHT_ENABLED,
     CONF_CO2_SENSORS,
     CONF_CO_SENSORS,
     CONF_COVER_ACTIVE_STATES,
@@ -49,27 +56,20 @@ from ..const import (
     CONF_POWER_SENSORS,
     CONF_PRESSURE_SENSORS,
     CONF_PURPOSE,
+    CONF_QUICK_VISIT_DECAY_ENABLED,
+    CONF_QUICK_VISIT_DECAY_HALF_LIFE,
+    CONF_QUICK_VISIT_MAX_DURATION,
     CONF_SLEEP_END,
     CONF_SLEEP_START,
-    CONF_ADJACENT_AREAS,
+    CONF_SOUND_PRESSURE_SENSORS,
+    CONF_TEMPERATURE_SENSORS,
+    CONF_THRESHOLD,
     CONF_TRANSITION_BOOST_ENABLED,
     CONF_TRANSITION_BOOST_LOGIT,
     CONF_TRANSITION_BOOST_WINDOW,
     CONF_TRANSITION_LEARN_DECAY,
     CONF_TRANSITION_LEARN_ENABLED,
     CONF_TRANSITION_LEARN_MAX_GAP,
-    CONF_QUICK_VISIT_DECAY_ENABLED,
-    CONF_QUICK_VISIT_DECAY_HALF_LIFE,
-    CONF_QUICK_VISIT_MAX_DURATION,
-    CONF_ADAPTIVE_DECAY_ENABLED,
-    CONF_ADAPTIVE_FALSE_NEGATIVE_WINDOW,
-    CONF_ADAPTIVE_DECAY_MAX_MULTIPLIER,
-    CONF_ADAPTIVE_DECAY_MULTIPLIER,
-    CONF_AUTO_WEIGHT_ALPHA,
-    CONF_AUTO_WEIGHT_ENABLED,
-    CONF_SOUND_PRESSURE_SENSORS,
-    CONF_TEMPERATURE_SENSORS,
-    CONF_THRESHOLD,
     CONF_VOC_SENSORS,
     CONF_WASP_ENABLED,
     CONF_WASP_MAX_DURATION,
@@ -87,7 +87,13 @@ from ..const import (
     CONF_WINDOW_ACTIVE_STATE,
     CONF_WINDOW_SENSORS,
     DECAY_INTERVAL,
+    DEFAULT_ADAPTIVE_DECAY_ENABLED,
+    DEFAULT_ADAPTIVE_DECAY_MAX_MULTIPLIER,
+    DEFAULT_ADAPTIVE_DECAY_MULTIPLIER,
+    DEFAULT_ADAPTIVE_FALSE_NEGATIVE_WINDOW,
     DEFAULT_APPLIANCE_ACTIVE_STATES,
+    DEFAULT_AUTO_WEIGHT_ALPHA,
+    DEFAULT_AUTO_WEIGHT_ENABLED,
     DEFAULT_COVER_ACTIVE_STATES,
     DEFAULT_DECAY_ENABLED,
     DEFAULT_DECAY_HALF_LIFE,
@@ -99,19 +105,13 @@ from ..const import (
     DEFAULT_MOTION_PROB_GIVEN_TRUE,
     DEFAULT_MOTION_TIMEOUT,
     DEFAULT_PURPOSE,
+    DEFAULT_QUICK_VISIT_DECAY_ENABLED,
+    DEFAULT_QUICK_VISIT_DECAY_HALF_LIFE,
+    DEFAULT_QUICK_VISIT_MAX_DURATION,
     DEFAULT_SLEEP_CONFIDENCE_THRESHOLD,
     DEFAULT_SLEEP_END,
     DEFAULT_SLEEP_START,
     DEFAULT_THRESHOLD,
-    DEFAULT_AUTO_WEIGHT_ALPHA,
-    DEFAULT_AUTO_WEIGHT_ENABLED,
-    DEFAULT_QUICK_VISIT_DECAY_ENABLED,
-    DEFAULT_QUICK_VISIT_DECAY_HALF_LIFE,
-    DEFAULT_QUICK_VISIT_MAX_DURATION,
-    DEFAULT_ADAPTIVE_DECAY_ENABLED,
-    DEFAULT_ADAPTIVE_FALSE_NEGATIVE_WINDOW,
-    DEFAULT_ADAPTIVE_DECAY_MAX_MULTIPLIER,
-    DEFAULT_ADAPTIVE_DECAY_MULTIPLIER,
     DEFAULT_TRANSITION_BOOST_ENABLED,
     DEFAULT_TRANSITION_BOOST_LOGIT,
     DEFAULT_TRANSITION_BOOST_WINDOW,
@@ -269,7 +269,9 @@ class IntegrationConfig:
     def auto_weight_enabled(self) -> bool:
         """Enable auto-weight calibration during analysis runs."""
         return bool(
-            self.config_entry.options.get(CONF_AUTO_WEIGHT_ENABLED, DEFAULT_AUTO_WEIGHT_ENABLED)
+            self.config_entry.options.get(
+                CONF_AUTO_WEIGHT_ENABLED, DEFAULT_AUTO_WEIGHT_ENABLED
+            )
         )
 
     @property
@@ -277,7 +279,9 @@ class IntegrationConfig:
         """EMA blend factor for auto-weight updates (0-1)."""
         try:
             alpha = float(
-                self.config_entry.options.get(CONF_AUTO_WEIGHT_ALPHA, DEFAULT_AUTO_WEIGHT_ALPHA)
+                self.config_entry.options.get(
+                    CONF_AUTO_WEIGHT_ALPHA, DEFAULT_AUTO_WEIGHT_ALPHA
+                )
             )
         except (TypeError, ValueError):
             return DEFAULT_AUTO_WEIGHT_ALPHA
@@ -659,7 +663,9 @@ class AreaConfig:
         )
         try:
             self.transition_learn_max_gap = int(
-                data.get(CONF_TRANSITION_LEARN_MAX_GAP, DEFAULT_TRANSITION_LEARN_MAX_GAP)
+                data.get(
+                    CONF_TRANSITION_LEARN_MAX_GAP, DEFAULT_TRANSITION_LEARN_MAX_GAP
+                )
             )
         except (TypeError, ValueError):
             self.transition_learn_max_gap = DEFAULT_TRANSITION_LEARN_MAX_GAP
@@ -671,7 +677,9 @@ class AreaConfig:
         )
         try:
             self.quick_visit_max_duration = int(
-                data.get(CONF_QUICK_VISIT_MAX_DURATION, DEFAULT_QUICK_VISIT_MAX_DURATION)
+                data.get(
+                    CONF_QUICK_VISIT_MAX_DURATION, DEFAULT_QUICK_VISIT_MAX_DURATION
+                )
             )
         except (TypeError, ValueError):
             self.quick_visit_max_duration = DEFAULT_QUICK_VISIT_MAX_DURATION
@@ -686,7 +694,9 @@ class AreaConfig:
             )
         except (TypeError, ValueError):
             self.quick_visit_decay_half_life = DEFAULT_QUICK_VISIT_DECAY_HALF_LIFE
-        self.quick_visit_decay_half_life = max(1, min(600, self.quick_visit_decay_half_life))
+        self.quick_visit_decay_half_life = max(
+            1, min(600, self.quick_visit_decay_half_life)
+        )
 
         # Adaptive false-negative learning (per-area; motion decay tuning)
         self.adaptive_decay_enabled = bool(
@@ -720,7 +730,9 @@ class AreaConfig:
 
         try:
             self.adaptive_decay_multiplier = float(
-                data.get(CONF_ADAPTIVE_DECAY_MULTIPLIER, DEFAULT_ADAPTIVE_DECAY_MULTIPLIER)
+                data.get(
+                    CONF_ADAPTIVE_DECAY_MULTIPLIER, DEFAULT_ADAPTIVE_DECAY_MULTIPLIER
+                )
             )
         except (TypeError, ValueError):
             self.adaptive_decay_multiplier = DEFAULT_ADAPTIVE_DECAY_MULTIPLIER

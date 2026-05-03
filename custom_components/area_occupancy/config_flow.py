@@ -48,11 +48,18 @@ from .const import (
     CONF_ACTION_ADD_AREA,
     CONF_ACTION_GLOBAL_SETTINGS,
     CONF_ACTION_MANAGE_PEOPLE,
+    CONF_ADAPTIVE_DECAY_ENABLED,
+    CONF_ADAPTIVE_DECAY_MAX_MULTIPLIER,
+    CONF_ADAPTIVE_DECAY_MULTIPLIER,
+    CONF_ADAPTIVE_FALSE_NEGATIVE_WINDOW,
+    CONF_ADJACENT_AREAS,
     CONF_AIR_QUALITY_SENSORS,
     CONF_APPLIANCE_ACTIVE_STATES,
     CONF_APPLIANCES,
     CONF_AREA_ID,
     CONF_AREAS,
+    CONF_AUTO_WEIGHT_ALPHA,
+    CONF_AUTO_WEIGHT_ENABLED,
     CONF_CO2_SENSORS,
     CONF_CO_SENSORS,
     CONF_COVER_ACTIVE_STATES,
@@ -84,27 +91,20 @@ from .const import (
     CONF_POWER_SENSORS,
     CONF_PRESSURE_SENSORS,
     CONF_PURPOSE,
+    CONF_QUICK_VISIT_DECAY_ENABLED,
+    CONF_QUICK_VISIT_DECAY_HALF_LIFE,
+    CONF_QUICK_VISIT_MAX_DURATION,
     CONF_SLEEP_END,
     CONF_SLEEP_START,
-    CONF_ADJACENT_AREAS,
+    CONF_SOUND_PRESSURE_SENSORS,
+    CONF_TEMPERATURE_SENSORS,
+    CONF_THRESHOLD,
     CONF_TRANSITION_BOOST_ENABLED,
     CONF_TRANSITION_BOOST_LOGIT,
     CONF_TRANSITION_BOOST_WINDOW,
     CONF_TRANSITION_LEARN_DECAY,
     CONF_TRANSITION_LEARN_ENABLED,
     CONF_TRANSITION_LEARN_MAX_GAP,
-    CONF_QUICK_VISIT_DECAY_ENABLED,
-    CONF_QUICK_VISIT_DECAY_HALF_LIFE,
-    CONF_QUICK_VISIT_MAX_DURATION,
-    CONF_ADAPTIVE_DECAY_ENABLED,
-    CONF_ADAPTIVE_FALSE_NEGATIVE_WINDOW,
-    CONF_ADAPTIVE_DECAY_MAX_MULTIPLIER,
-    CONF_ADAPTIVE_DECAY_MULTIPLIER,
-    CONF_AUTO_WEIGHT_ALPHA,
-    CONF_AUTO_WEIGHT_ENABLED,
-    CONF_SOUND_PRESSURE_SENSORS,
-    CONF_TEMPERATURE_SENSORS,
-    CONF_THRESHOLD,
     CONF_VERSION,
     CONF_VOC_SENSORS,
     CONF_WASP_ENABLED,
@@ -122,7 +122,13 @@ from .const import (
     CONF_WEIGHT_WINDOW,
     CONF_WINDOW_ACTIVE_STATE,
     CONF_WINDOW_SENSORS,
+    DEFAULT_ADAPTIVE_DECAY_ENABLED,
+    DEFAULT_ADAPTIVE_DECAY_MAX_MULTIPLIER,
+    DEFAULT_ADAPTIVE_DECAY_MULTIPLIER,
+    DEFAULT_ADAPTIVE_FALSE_NEGATIVE_WINDOW,
     DEFAULT_APPLIANCE_ACTIVE_STATES,
+    DEFAULT_AUTO_WEIGHT_ALPHA,
+    DEFAULT_AUTO_WEIGHT_ENABLED,
     DEFAULT_COVER_ACTIVE_STATES,
     DEFAULT_DECAY_ENABLED,
     DEFAULT_DECAY_HALF_LIFE,
@@ -134,25 +140,19 @@ from .const import (
     DEFAULT_MOTION_PROB_GIVEN_TRUE,
     DEFAULT_MOTION_TIMEOUT,
     DEFAULT_PURPOSE,
-    DEFAULT_SLEEP_CONFIDENCE_THRESHOLD,
-    DEFAULT_SLEEP_END,
-    DEFAULT_SLEEP_START,
-    DEFAULT_AUTO_WEIGHT_ALPHA,
-    DEFAULT_AUTO_WEIGHT_ENABLED,
     DEFAULT_QUICK_VISIT_DECAY_ENABLED,
     DEFAULT_QUICK_VISIT_DECAY_HALF_LIFE,
     DEFAULT_QUICK_VISIT_MAX_DURATION,
-    DEFAULT_ADAPTIVE_DECAY_ENABLED,
-    DEFAULT_ADAPTIVE_FALSE_NEGATIVE_WINDOW,
-    DEFAULT_ADAPTIVE_DECAY_MAX_MULTIPLIER,
-    DEFAULT_ADAPTIVE_DECAY_MULTIPLIER,
+    DEFAULT_SLEEP_CONFIDENCE_THRESHOLD,
+    DEFAULT_SLEEP_END,
+    DEFAULT_SLEEP_START,
+    DEFAULT_THRESHOLD,
     DEFAULT_TRANSITION_BOOST_ENABLED,
     DEFAULT_TRANSITION_BOOST_LOGIT,
     DEFAULT_TRANSITION_BOOST_WINDOW,
     DEFAULT_TRANSITION_LEARN_DECAY,
     DEFAULT_TRANSITION_LEARN_ENABLED,
     DEFAULT_TRANSITION_LEARN_MAX_GAP,
-    DEFAULT_THRESHOLD,
     DEFAULT_WASP_MAX_DURATION,
     DEFAULT_WASP_MOTION_TIMEOUT,
     DEFAULT_WASP_VERIFICATION_DELAY,
@@ -173,8 +173,8 @@ from .const import (
     get_default_state,
     get_state_options,
 )
-from .data.purpose import Purpose, get_purpose_options
 from .data.entity_type import InputType, suggest_input_type_from_ha_entity
+from .data.purpose import Purpose, get_purpose_options
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -505,6 +505,20 @@ def _get_include_entities(hass: HomeAssistant) -> dict[str, list[str]]:
         if entry.entity_id.startswith("cover.") and not entry.disabled
     ]
 
+    return {
+        "appliance": include_appliance_entities,
+        "window": include_window_entities,
+        "door": include_door_entities,
+        "cover": include_cover_entities,
+        "temperature": include_temperature_entities,
+        "humidity": include_humidity_entities,
+        "pressure": include_pressure_entities,
+        "air_quality": include_air_quality_entities,
+        "pm25": include_pm25_entities,
+        "pm10": include_pm10_entities,
+        "motion": include_motion_entities,
+    }
+
 
 def _get_area_entity_suggestions(
     hass: HomeAssistant,
@@ -576,20 +590,6 @@ def _get_area_entity_suggestions(
             _add(CONF_VOC_SENSORS, entry.entity_id)
 
     return suggestions
-
-    return {
-        "appliance": include_appliance_entities,
-        "window": include_window_entities,
-        "door": include_door_entities,
-        "cover": include_cover_entities,
-        "temperature": include_temperature_entities,
-        "humidity": include_humidity_entities,
-        "pressure": include_pressure_entities,
-        "air_quality": include_air_quality_entities,
-        "pm25": include_pm25_entities,
-        "pm10": include_pm10_entities,
-        "motion": include_motion_entities,
-    }
 
 
 def _create_motion_section_schema(
@@ -2198,7 +2198,9 @@ def _create_global_settings_schema(defaults: dict[str, Any]) -> vol.Schema:
             ): TimeSelector(),
             vol.Optional(
                 CONF_AUTO_WEIGHT_ENABLED,
-                default=defaults.get(CONF_AUTO_WEIGHT_ENABLED, DEFAULT_AUTO_WEIGHT_ENABLED),
+                default=defaults.get(
+                    CONF_AUTO_WEIGHT_ENABLED, DEFAULT_AUTO_WEIGHT_ENABLED
+                ),
             ): BooleanSelector(),
             vol.Optional(
                 CONF_AUTO_WEIGHT_ALPHA,

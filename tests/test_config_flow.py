@@ -43,6 +43,7 @@ from custom_components.area_occupancy.const import (
     CONF_MOTION_PROB_GIVEN_TRUE,
     CONF_MOTION_SENSORS,
     CONF_OPTION_PREFIX_AREA,
+    CONF_POWER_SENSORS,
     CONF_PURPOSE,
     CONF_THRESHOLD,
     CONF_WASP_ENABLED,

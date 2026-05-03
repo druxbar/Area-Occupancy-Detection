@@ -622,7 +622,9 @@ class Entity:
                     duration_s = (
                         self.last_updated - to_utc(self.last_true_start)
                     ).total_seconds()
-                    max_dur = float(getattr(self.area_config, "quick_visit_max_duration", 0))
+                    max_dur = float(
+                        getattr(self.area_config, "quick_visit_max_duration", 0)
+                    )
                     if duration_s <= max_dur:
                         override_half_life = float(
                             getattr(self.area_config, "quick_visit_decay_half_life", 0)
@@ -633,7 +635,9 @@ class Entity:
                     and self.area_config is not None
                     and getattr(self.area_config, "adaptive_decay_enabled", False)
                 ):
-                    mult = float(getattr(self.area_config, "adaptive_decay_multiplier", 1.0))
+                    mult = float(
+                        getattr(self.area_config, "adaptive_decay_multiplier", 1.0)
+                    )
                     if mult > 1.0:
                         base = override_half_life or float(self.decay.half_life)
                         override_half_life = base * mult

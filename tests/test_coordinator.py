@@ -1473,7 +1473,7 @@ class TestAreaOccupancyCoordinator:
         source.config.transition_boost_logit = 0.6
         source.config.transition_boost_window = 60
 
-        coordinator._apply_transition_boost(source)  # noqa: SLF001
+        coordinator._apply_transition_boost(source)
         delta = coordinator.get_transient_prior_logit_delta(target.area_name)
         assert delta == pytest.approx(0.6)
         sources = coordinator.get_transient_prior_sources(target.area_name)

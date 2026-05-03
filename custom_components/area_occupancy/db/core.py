@@ -37,8 +37,8 @@ from . import (
 )
 from .schema import (
     AreaRelationships,
-    AreaTransitionCounts,
     Areas,
+    AreaTransitionCounts,
     Correlations,
     CrossAreaStats,
     Entities,

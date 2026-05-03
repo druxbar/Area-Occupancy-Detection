@@ -131,7 +131,9 @@ def run_transition_learning(
     period_end = now
     period_start = now - timedelta(days=lookback_days)
     area_names = [a.area_name for a in areas]
-    intervals_by_area = _load_intervals_map(coordinator, area_names, period_start, period_end)
+    intervals_by_area = _load_intervals_map(
+        coordinator, area_names, period_start, period_end
+    )
 
     merged: dict[tuple[str, str], float] = {}
     for area in areas:
@@ -142,9 +144,7 @@ def run_transition_learning(
             continue
         gap_s = int(area.config.transition_learn_max_gap)
         gap = timedelta(seconds=max(1, gap_s))
-        inc = collect_transition_increments(
-            area.area_name, adj, intervals_by_area, gap
-        )
+        inc = collect_transition_increments(area.area_name, adj, intervals_by_area, gap)
         for to_name, v in inc.items():
             key = (area.area_name, to_name)
             merged[key] = merged.get(key, 0.0) + v

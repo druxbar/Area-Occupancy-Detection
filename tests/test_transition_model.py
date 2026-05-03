@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -32,7 +32,7 @@ def test_weights_follow_counts() -> None:
 
 def test_collect_transition_increments_winner_is_earliest_start() -> None:
     """After leaving A, first adjacent occupancy start in gap wins."""
-    t0 = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+    t0 = datetime(2024, 1, 1, 12, 0, 0, tzinfo=UTC)
     gap = timedelta(seconds=60)
     intervals_by_area = {
         "A": [(t0, t0 + timedelta(minutes=5))],
@@ -51,7 +51,7 @@ def test_collect_transition_increments_winner_is_earliest_start() -> None:
 
 def test_collect_transition_increments_respects_gap() -> None:
     """Occupancy in B after gap window does not count."""
-    t0 = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+    t0 = datetime(2024, 1, 1, 12, 0, 0, tzinfo=UTC)
     gap = timedelta(seconds=30)
     a_end = t0 + timedelta(minutes=5)
     intervals_by_area = {
