@@ -14,12 +14,14 @@ from custom_components.area_occupancy.utils import (
     combine_priors,
     combined_probability,
     environmental_confidence,
+    extract_device_identifier_from_device_info,
     format_float,
     format_percentage,
     logit,
     map_binary_state_to_semantic,
     presence_probability,
     sigmoid,
+    sigmoid_contributions,
     sigmoid_probability,
 )
 
@@ -1218,3 +1220,58 @@ class TestApplyActivityBoost:
         """Result should always be within MIN_PROBABILITY to MAX_PROBABILITY."""
         result = apply_activity_boost(0.99, activity_boost=5.0, activity_confidence=1.0)
         assert MIN_PROBABILITY <= result <= MAX_PROBABILITY
+
+
+class TestSigmoidContributions:
+    """Cover sigmoid_contributions explainability helper."""
+
+    def test_empty_entities_returns_empty_rows(self) -> None:
+        assert sigmoid_contributions({}) == []
+
+    def test_skips_non_positive_weight(self) -> None:
+        e = _create_mock_entity(weight=0.0)
+        assert sigmoid_contributions({"a": e}) == []
+
+    def test_active_decaying_inactive_unavailable_and_correlation(self) -> None:
+        active = _create_mock_entity(evidence=True, weight=0.5)
+        decaying = _create_mock_entity(
+            evidence=False, is_decaying=True, decay_factor=0.4, weight=0.5
+        )
+        inactive = _create_mock_entity(evidence=False, is_decaying=False, weight=0.5)
+        unavailable = _create_mock_entity(evidence=None, is_decaying=False, weight=0.5)
+        rows = sigmoid_contributions(
+            {
+                "active": active,
+                "decaying": decaying,
+                "inactive": inactive,
+                "unavail": unavailable,
+            },
+            correlations={"active": 0.5, "decaying": 0.8},
+        )
+        by_id = {r["entity_id"]: r for r in rows}
+        assert by_id["active"]["evidence_state"] == "active"
+        assert by_id["decaying"]["evidence_state"] == "decaying"
+        assert by_id["inactive"]["evidence_state"] == "inactive"
+        assert by_id["unavail"]["evidence_state"] == "unavailable"
+        assert by_id["active"]["correlation"] == 0.5
+        # Sorted by |logit_contribution| descending
+        assert rows[0]["logit_contribution"] >= rows[-1]["logit_contribution"]
+
+
+class TestExtractDeviceIdentifierFromDeviceInfo:
+    """Cover extract_device_identifier_from_device_info edge paths."""
+
+    def test_missing_identifiers_returns_none(self) -> None:
+        assert extract_device_identifier_from_device_info({}) is None
+
+    def test_invalid_identifiers_tuple_too_short_returns_none(self) -> None:
+        assert (
+            extract_device_identifier_from_device_info(
+                {"identifiers": {("only_one_element",)}}
+            )
+            is None
+        )
+
+    def test_extracts_second_tuple_element(self) -> None:
+        info = {"identifiers": {("area_occupancy", "my-device-id")}}
+        assert extract_device_identifier_from_device_info(info) == "my-device-id"

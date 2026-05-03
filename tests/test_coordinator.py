@@ -1480,7 +1480,14 @@ class TestAreaOccupancyCoordinator:
         source.config.transition_boost_logit = 0.6
         source.config.transition_boost_window = 60
 
-        coordinator._apply_transition_boost(source)
+        # adjacent_area_names() resolves IDs via HA area_registry only, not
+        # coordinator.areas — synthetic create_test_area IDs are invisible there.
+        with patch.object(
+            source.config,
+            "adjacent_area_names",
+            return_value=[target.area_name],
+        ):
+            coordinator._apply_transition_boost(source)
         delta = coordinator.get_transient_prior_logit_delta(target.area_name)
         assert delta == pytest.approx(0.6)
         sources = coordinator.get_transient_prior_sources(target.area_name)
