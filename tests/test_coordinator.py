@@ -1462,6 +1462,13 @@ class TestAreaOccupancyCoordinator:
     ) -> None:
         """Motion transition boost adds transient prior delta to adjacent areas."""
         area_names = coordinator.get_area_names()
+        if len(area_names) < 2:
+            create_test_area(
+                coordinator,
+                area_name="Boost Target",
+                entity_ids=["binary_sensor.motion_target"],
+            )
+            area_names = coordinator.get_area_names()
         assert len(area_names) >= 2
         source = coordinator.get_area(area_names[0])
         target = coordinator.get_area(area_names[1])

@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-from custom_components.area_occupancy.const import DEVICE_SW_VERSION, DOMAIN
+from custom_components.area_occupancy.const import CONF_AREAS, DEVICE_SW_VERSION, DOMAIN
 from custom_components.area_occupancy.coordinator import AreaOccupancyCoordinator
 from custom_components.area_occupancy.data.decay import Decay as DecayClass
 from custom_components.area_occupancy.data.entity import Entity
@@ -16,6 +16,7 @@ from custom_components.area_occupancy.service import (
     _build_analysis_data,
     _collect_entity_states,
     _collect_likelihood_data,
+    _export_config,
     _find_area_by_area_id,
     _purge_area_history,
     _run_analysis,
@@ -498,6 +499,31 @@ class TestBuildAnalysisData:
         assert result["total_entities"] == 0
         assert result["entity_states"] == {}
         assert result["likelihoods"] == {}
+
+    def test_build_analysis_data_half_life_zero_uses_purpose_default(
+        self, hass: HomeAssistant, default_area
+    ) -> None:
+        """When decay half_life is 0 (auto), export uses purpose-derived default."""
+        area_name = default_area.area_name
+        default_area.config.decay.half_life = 0
+        result = _build_analysis_data(hass, default_area, area_name)
+        assert result["half_life"] > 0
+
+
+class TestExportConfig:
+    """Tests for _export_config service helper."""
+
+    async def test_export_config_merges_data_and_options(
+        self, hass: HomeAssistant, coordinator: AreaOccupancyCoordinator
+    ) -> None:
+        """Export merges config entry data and options; areas list leads with area_id."""
+        hass.data[DOMAIN] = coordinator
+        call = _create_service_call()
+        result = await _export_config(hass, call)
+        assert isinstance(result, dict)
+        assert CONF_AREAS in result
+        for area_cfg in result[CONF_AREAS]:
+            assert list(area_cfg.keys())[0] == "area_id"
 
 
 class TestRunAnalysisMultipleAreas:

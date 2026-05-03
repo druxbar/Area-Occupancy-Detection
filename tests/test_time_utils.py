@@ -8,6 +8,8 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from custom_components.area_occupancy.time_utils import (
+    assert_utc_aware,
+    ensure_timezone_aware,
     from_db_utc,
     to_db_utc,
     to_local,
@@ -52,6 +54,31 @@ class TestTimeUtils:
         out = from_db_utc(value)
         assert out.tzinfo == dt_util.UTC
         assert out.hour == 12
+
+    def test_from_db_utc_converts_non_utc_aware(self) -> None:
+        """Aware non-UTC values are normalized to UTC."""
+        value = datetime(2025, 1, 1, 12, 0, 0, tzinfo=ZoneInfo("America/New_York"))
+        out = from_db_utc(value)
+        assert out.tzinfo == dt_util.UTC
+
+    def test_assert_utc_aware_accepts_utc(self) -> None:
+        value = datetime(2025, 1, 1, 12, 0, 0, tzinfo=dt_util.UTC)
+        assert_utc_aware(value)
+
+    def test_assert_utc_aware_rejects_naive(self) -> None:
+        value = datetime(2025, 1, 1, 12, 0, 0)
+        with pytest.raises(ValueError, match="UTC-aware"):
+            assert_utc_aware(value, context="test")
+
+    def test_ensure_timezone_aware_naive_gets_utc(self) -> None:
+        value = datetime(2025, 1, 1, 12, 0, 0)
+        out = ensure_timezone_aware(value)
+        assert out.tzinfo == dt_util.UTC
+
+    def test_ensure_timezone_aware_preserves_other_tz(self) -> None:
+        value = datetime(2025, 1, 1, 12, 0, 0, tzinfo=ZoneInfo("Europe/Berlin"))
+        out = ensure_timezone_aware(value)
+        assert out is value
 
     def test_to_local_uses_default_timezone(self, set_tz_america_new_york) -> None:
         value = datetime(2025, 1, 1, 12, 0, 0, tzinfo=dt_util.UTC)

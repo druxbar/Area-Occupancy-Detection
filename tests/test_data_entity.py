@@ -2,6 +2,7 @@
 
 from datetime import timedelta
 import math
+from types import SimpleNamespace
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
@@ -599,10 +600,13 @@ class TestEntityPropertiesAndMethods:
         self, coordinator: AreaOccupancyCoordinator
     ) -> None:
         """Short motion burst triggers override half-life when enabled."""
-        cfg = Mock()
-        cfg.quick_visit_decay_enabled = True
-        cfg.quick_visit_max_duration = 10
-        cfg.quick_visit_decay_half_life = 5
+        cfg = SimpleNamespace(
+            quick_visit_decay_enabled=True,
+            quick_visit_max_duration=10,
+            quick_visit_decay_half_life=5,
+            adaptive_decay_enabled=False,
+            adaptive_decay_multiplier=1.0,
+        )
 
         entity_type = EntityType(
             input_type=InputType.MOTION,
