@@ -87,6 +87,9 @@ PRIORS_TRAINING_GRACE_PERIOD: timedelta = timedelta(days=7)
 STALE_CACHE_THRESHOLD: timedelta = timedelta(hours=25)
 
 # Last full analysis cycle is flagged as "slow" if it took longer than this.
+# Baseline "slow analysis" threshold for a single-area installation.
+# The analysis pipeline runs across all areas; callers should scale this
+# by area count (or otherwise normalize) before flagging per-area issues.
 SLOW_ANALYSIS_THRESHOLD_MS: float = 30_000.0
 
 # Fraction of correlatable entities whose ``analysis_error`` indicates a real
@@ -338,6 +341,7 @@ class HealthMonitor:
         has_global_prior: bool,
         cache_age_hours: float | None,
         last_analysis_duration_ms: float | None,
+        area_count: int,
         correlation_failure_count: int,
         correlatable_entity_count: int,
     ) -> list[HealthIssue]:
@@ -375,7 +379,7 @@ class HealthMonitor:
         if issue:
             new_issues.append(issue)
 
-        issue = self._check_slow_analysis(last_analysis_duration_ms, now)
+        issue = self._check_slow_analysis(last_analysis_duration_ms, area_count, now)
         if issue:
             new_issues.append(issue)
 
@@ -600,12 +604,14 @@ class HealthMonitor:
     def _check_slow_analysis(
         self,
         last_analysis_duration_ms: float | None,
+        area_count: int,
         now: datetime,
     ) -> HealthIssue | None:
         """Flag analysis runs that took longer than ``SLOW_ANALYSIS_THRESHOLD_MS``."""
         if last_analysis_duration_ms is None:
             return None
-        if last_analysis_duration_ms < SLOW_ANALYSIS_THRESHOLD_MS:
+        scaled_threshold_ms = SLOW_ANALYSIS_THRESHOLD_MS * max(1, int(area_count))
+        if last_analysis_duration_ms < scaled_threshold_ms:
             return None
         return HealthIssue(
             entity_id=None,
@@ -615,7 +621,7 @@ class HealthMonitor:
             duration_hours=round(last_analysis_duration_ms / 3_600_000, 4),
             details=(
                 f"Last analysis cycle took {last_analysis_duration_ms / 1000:.1f}s "
-                f"(threshold: {SLOW_ANALYSIS_THRESHOLD_MS / 1000:.0f}s)"
+                f"(threshold: {scaled_threshold_ms / 1000:.0f}s for {max(1, int(area_count))} area(s))"
             ),
         )
 

@@ -287,6 +287,7 @@ async def _run_pipeline_health_check(
     # pipeline actually attempts. Filtering by ``analysis_error`` alone
     # would miss reclassifications and warm-up state.
     correlatable_by_area = get_correlatable_entities_by_area(coordinator)
+    area_count = len(coordinator.areas)
 
     for area in coordinator.areas.values():
         try:
@@ -333,6 +334,7 @@ async def _run_pipeline_health_check(
             has_global_prior=area.prior.global_prior is not None,
             cache_age_hours=cache_age_hours,
             last_analysis_duration_ms=coordinator.last_analysis_duration_ms,
+            area_count=area_count,
             correlation_failure_count=failure_count,
             correlatable_entity_count=correlatable_count,
         )
