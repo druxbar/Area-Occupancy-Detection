@@ -341,7 +341,7 @@ class HealthMonitor:
         has_global_prior: bool,
         cache_age_hours: float | None,
         last_analysis_duration_ms: float | None,
-        area_count: int,
+        area_count: int = 1,
         correlation_failure_count: int,
         correlatable_entity_count: int,
     ) -> list[HealthIssue]:

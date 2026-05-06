@@ -1424,22 +1424,20 @@ class AreaOccupancyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             _failed = True
         finally:
             self._analysis_running = False
-            # If shutdown was signalled DURING the await above, the
-            # EVENT_HOMEASSISTANT_STOP listener has already cancelled
-            # the timer slot and set ``_stop_requested``. Re-arming
-            # here would register a fresh callback that immediately
-            # no-ops in the guard at the top of this method — and
-            # would only be cleaned up later by ``async_shutdown``.
-            # Skip the re-arm entirely.
-            if self._stop_requested:
-                return
-            # Always reschedule — retry sooner on failure
-            if _failed:
-                next_update = _now + timedelta(minutes=15)
-            else:
-                next_update = _now + timedelta(
-                    seconds=self.integration_config.analysis_interval
-                )
-            self._analysis_timer = async_track_point_in_time(
-                self.hass, self.run_analysis, next_update
-            )
+
+        # If shutdown was signalled DURING the await above, the
+        # EVENT_HOMEASSISTANT_STOP listener has already cancelled
+        # the timer slot and set ``_stop_requested``. Re-arming
+        # here would register a fresh callback that immediately
+        # no-ops in the guard at the top of this method — and
+        # would only be cleaned up later by ``async_shutdown``.
+        # Skip the re-arm entirely.
+        if self._stop_requested:
+            return
+
+        # Always reschedule — retry sooner on failure
+        if _failed:
+            next_update = _now + timedelta(minutes=15)
+        else:
+            next_update = _now + timedelta(seconds=self.integration_config.analysis_interval)
+        self._analysis_timer = async_track_point_in_time(self.hass, self.run_analysis, next_update)
